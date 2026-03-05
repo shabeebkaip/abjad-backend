@@ -5,14 +5,20 @@ import morgan from 'morgan';
 import compression from 'compression';
 import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
-import 'express-async-errors';
+import routes from './routes';
+import { errorHandler } from './middlewares/errorHandler';
+import { notFound } from './middlewares/notFound';
+import { config } from './config';
 
 const app: Application = express();
 
 // Security middleware
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: process.env.NODE_ENV === 'production' ? undefined : false
+}));
+
 app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:3001',
+  origin: config.cors.origin,
   credentials: true
 }));
 
@@ -30,7 +36,7 @@ app.use(cookieParser());
 app.use(compression());
 
 // Logging
-if (process.env.NODE_ENV === 'development') {
+if (config.nodeEnv === 'development') {
   app.use(morgan('dev'));
 } else {
   app.use(morgan('combined'));
@@ -41,26 +47,18 @@ app.get('/health', (req: Request, res: Response) => {
   res.status(200).json({ 
     status: 'OK', 
     message: 'Server is running',
+    environment: config.nodeEnv,
     timestamp: new Date().toISOString()
   });
 });
 
-// API routes will go here
-app.get('/api', (req: Request, res: Response) => {
-  res.json({ message: 'Abjad Hiring Application API' });
-});
+// API routes
+app.use('/api', routes);
 
 // 404 handler
-app.use((req: Request, res: Response) => {
-  res.status(404).json({ error: 'Route not found' });
-});
+app.use(notFound);
 
 // Error handler
-app.use((err: any, req: Request, res: Response, next: any) => {
-  console.error(err.stack);
-  res.status(err.status || 500).json({
-    error: process.env.NODE_ENV === 'development' ? err.message : 'Internal server error'
-  });
-});
+app.use(errorHandler);
 
 export default app;
