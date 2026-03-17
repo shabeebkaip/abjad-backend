@@ -1,10 +1,10 @@
-import { Router, Request, Response } from 'express';
-import usersRoutes from '../modules/users/users.routes';
+import { Router, Response } from 'express';
+import authRoutes from '../modules/auth/auth.routes';
 
 const router: Router = Router();
 
 // Health check
-router.get('/', (req: Request, res: Response) => {
+router.get('/', (_req, res: Response) => {
   res.json({ 
     message: 'Abjad Hiring Application API',
     version: '1.0.0',
@@ -13,10 +13,9 @@ router.get('/', (req: Request, res: Response) => {
 });
 
 // Module routes
-router.use('/users', usersRoutes);
+router.use('/auth', authRoutes);
 
 // Add more module routes here as you create them
-// router.use('/auth', authRoutes);
 // router.use('/jobs', jobsRoutes);
 // router.use('/applications', applicationsRoutes);
 
