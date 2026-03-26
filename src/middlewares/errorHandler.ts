@@ -1,22 +1,32 @@
-import { Request, Response, NextFunction } from 'express';
+import { Response } from 'express';
+import { AppError } from '../utils/app-error.util';
 
-export const errorHandler = (err: any, req: Request, res: Response, next: NextFunction) => {
+export const errorHandler = (err: any, _req: any, res: Response, _next: any) => {
   console.error('Error:', err);
+
+  // Custom AppError
+  if (err instanceof AppError) {
+    return res.status(err.statusCode).json({
+      success: false,
+      message: err.message,
+    });
+  }
 
   // Mongoose validation error
   if (err.name === 'ValidationError') {
     return res.status(400).json({
       success: false,
-      message: 'Validation Error',
+      message: 'Validation failed - please check your input',
       errors: Object.values(err.errors).map((e: any) => e.message),
     });
   }
 
   // Mongoose duplicate key error
   if (err.code === 11000) {
+    const field = Object.keys(err.keyValue)[0];
     return res.status(400).json({
       success: false,
-      message: 'Duplicate field value entered',
+      message: `This ${field} is already registered. Please use a different one.`,
     });
   }
 
@@ -24,7 +34,7 @@ export const errorHandler = (err: any, req: Request, res: Response, next: NextFu
   if (err.name === 'CastError') {
     return res.status(400).json({
       success: false,
-      message: 'Invalid ID format',
+      message: 'Invalid ID format provided',
     });
   }
 
@@ -32,21 +42,21 @@ export const errorHandler = (err: any, req: Request, res: Response, next: NextFu
   if (err.name === 'JsonWebTokenError') {
     return res.status(401).json({
       success: false,
-      message: 'Invalid token',
+      message: 'Invalid token - authentication failed',
     });
   }
 
   if (err.name === 'TokenExpiredError') {
     return res.status(401).json({
       success: false,
-      message: 'Token expired',
+      message: 'Your session has expired. Please login again.',
     });
   }
 
-  // Default error
-  res.status(err.statusCode || 500).json({
+  // Default error (statusCode property or 500)
+  return res.status(err.statusCode || 500).json({
     success: false,
-    message: err.message || 'Internal Server Error',
+    message: err.message || 'An unexpected error occurred. Please try again.',
     ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
   });
 };

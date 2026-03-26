@@ -1,49 +1,64 @@
 import mongoose, { Schema, Model, Document } from 'mongoose';
+import { v4 as uuidv4 } from 'uuid';
 
 export interface IUser {
   _id?: string;
-  name: string;
+  uuid: string;
+  name?: string;
   phone: string;
   email?: string;
   password?: string;
   role: 'teacher' | 'school' | 'admin';
+  status: 'active' | 'suspended' | 'blocked' | 'pending';
   isPhoneVerified: boolean;
   isEmailVerified: boolean;
-  isActive: boolean;
   isProfileComplete: boolean;
   profileStep: 'basic' | 'profile' | 'documents' | 'complete';
   failedLoginAttempts: number;
   lockedUntil?: Date;
   lastLoginAt?: Date;
+  loginCount: number;
+  pushNotificationsEnabled: boolean;
+  emailNotificationsEnabled: boolean;
   deviceTokens: string[];
   language: 'ar' | 'en';
+  suspensionReason?: string;
   createdAt?: Date;
   updatedAt?: Date;
 }
 
 export interface IUserDocument extends Document {
-  name: string;
+  uuid: string;
+  name?: string;
   phone: string;
   email?: string;
   password?: string;
   role: 'teacher' | 'school' | 'admin';
+  status: 'active' | 'suspended' | 'blocked' | 'pending';
   isPhoneVerified: boolean;
   isEmailVerified: boolean;
-  isActive: boolean;
   isProfileComplete: boolean;
   profileStep: 'basic' | 'profile' | 'documents' | 'complete';
   failedLoginAttempts: number;
   lockedUntil?: Date;
   lastLoginAt?: Date;
+  loginCount: number;
+  pushNotificationsEnabled: boolean;
+  emailNotificationsEnabled: boolean;
   deviceTokens: string[];
   language: 'ar' | 'en';
+  suspensionReason?: string;
 }
 
 export interface IUserMethods {
   isLocked(): boolean;
+  canLogin(): boolean;
   incrementFailedAttempts(): Promise<IUserDocument>;
   resetFailedAttempts(): Promise<IUserDocument>;
-  toSafeObject(): Omit<IUser, 'failedLoginAttempts' | 'lockedUntil' | 'deviceTokens'>;
+  incrementLoginCount(): Promise<IUserDocument>;
+  suspend(reason: string): Promise<IUserDocument>;
+  unsuspend(): Promise<IUserDocument>;
+  toSafeObject(): Omit<IUser, 'failedLoginAttempts' | 'lockedUntil' | 'deviceTokens' | 'password'>;
 }
 
 export type UserDocument = IUserDocument & IUserMethods;
@@ -51,13 +66,18 @@ export type UserDocument = IUserDocument & IUserMethods;
 // ─── Schema ──────────────────────────────────────────────────
 const userSchema = new Schema<UserDocument>(
   {
-    name: { type: String, required: true, trim: true },
+    uuid: {
+      type: String,
+      required: true,
+      unique: true,
+      default: () => uuidv4(),
+    },
+    name: { type: String, trim: true },
     phone: {
       type: String,
       required: true,
       unique: true,
       trim: true,
-      index: true,
       validate: {
         validator: (v: string) => /^\+9665[0-9]{8}$/.test(v),
         message: "Invalid Saudi mobile number (+9665xxxxxxxx)",
@@ -76,9 +96,13 @@ const userSchema = new Schema<UserDocument>(
       enum: ["teacher", "school", "admin"],
       required: true,
     },
+    status: {
+      type: String,
+      enum: ["active", "suspended", "blocked", "pending"],
+      default: "pending",
+    },
     isPhoneVerified: { type: Boolean, default: false },
     isEmailVerified: { type: Boolean, default: false },
-    isActive: { type: Boolean, default: true },
     isProfileComplete: { type: Boolean, default: false },
     profileStep: {
       type: String,
@@ -88,22 +112,34 @@ const userSchema = new Schema<UserDocument>(
     failedLoginAttempts: { type: Number, default: 0 },
     lockedUntil: { type: Date },
     lastLoginAt: { type: Date },
+    loginCount: { type: Number, default: 0 },
+    pushNotificationsEnabled: { type: Boolean, default: true },
+    emailNotificationsEnabled: { type: Boolean, default: true },
     deviceTokens: [{ type: String }],
     language: { type: String, enum: ["ar", "en"], default: "ar" },
+    suspensionReason: { type: String, trim: true },
   },
   { timestamps: true },
 );
 
 // ─── Indexes ─────────────────────────────────────────────────
-userSchema.index({ phone: 1 }, { unique: true });
-userSchema.index({ email: 1 }, { unique: true, sparse: true });
-userSchema.index({ role: 1, isActive: 1 });
-userSchema.index({ createdAt: -1 });
-userSchema.index({ lockedUntil: 1 }, { expireAfterSeconds: 0 }); // TTL
+// Query Indexes (unique constraints are defined at field level above)
+userSchema.index({ role: 1 }); // role → index
+userSchema.index({ status: 1 }); // status → index
+userSchema.index({ createdAt: -1 }); // createdAt → index
+
+// Composite & Special Indexes
+userSchema.index({ role: 1, status: 1 }); // Compound: find users by role + status
+userSchema.index({ loginCount: -1 }); // Top active users
+userSchema.index({ lockedUntil: 1 }, { expireAfterSeconds: 0 }); // TTL - auto-delete
 
 // ─── Instance Methods ─────────────────────────────────────────
 userSchema.methods.isLocked = function (this: UserDocument): boolean {
   return !!(this.lockedUntil && this.lockedUntil > new Date());
+};
+
+userSchema.methods.canLogin = function (this: UserDocument): boolean {
+  return this.status === 'active' && !this.isLocked();
 };
 
 userSchema.methods.incrementFailedAttempts = function (this: UserDocument) {
@@ -120,11 +156,30 @@ userSchema.methods.resetFailedAttempts = function (this: UserDocument) {
   return this.save();
 };
 
+userSchema.methods.incrementLoginCount = function (this: UserDocument) {
+  this.loginCount += 1;
+  this.lastLoginAt = new Date();
+  return this.save();
+};
+
+userSchema.methods.suspend = function (this: UserDocument, reason: string) {
+  this.status = 'suspended';
+  this.suspensionReason = reason;
+  return this.save();
+};
+
+userSchema.methods.unsuspend = function (this: UserDocument) {
+  this.status = 'active';
+  this.suspensionReason = undefined;
+  return this.save();
+};
+
 userSchema.methods.toSafeObject = function (this: UserDocument) {
   const obj = this.toObject();
   delete obj.deviceTokens;
   delete obj.failedLoginAttempts;
   delete obj.lockedUntil;
+  delete obj.password;
   delete obj.__v;
   return obj;
 };

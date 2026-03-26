@@ -1,0 +1,438 @@
+{
+  "info": {
+    "_postman_id": "abjad-backend-auth-tests",
+    "name": "Abjad Backend - Complete Auth Testing",
+    "description": "Full manual testing suite for all auth endpoints",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. Health Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/health",
+          "host": ["{{base_url}}"],
+          "path": ["health"]
+        },
+        "description": "Verify server is running"
+      },
+      "response": []
+    },
+    {
+      "name": "2. Send OTP - Valid Phone",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"phone\": \"+1234567890\",\n  \"purpose\": \"signup\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/auth/send-otp",
+          "host": ["{{base_url}}"],
+          "path": ["api", "auth", "send-otp"]
+        },
+        "description": "Send OTP to valid phone number\n\nExpected: 200 OK\n{\n  \"success\": true,\n  \"message\": \"OTP sent\"\n}"
+      },
+      "response": []
+    },
+    {
+      "name": "3. Send OTP - Invalid Phone Format",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"phone\": \"invalid-phone\",\n  \"purpose\": \"signup\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/auth/send-otp",
+          "host": ["{{base_url}}"],
+          "path": ["api", "auth", "send-otp"]
+        },
+        "description": "Test validation error\n\nExpected: 400 Bad Request\n{\n  \"success\": false,\n  \"message\": \"...\"\n}"
+      },
+      "response": []
+    },
+    {
+      "name": "4. Send OTP - Missing Phone",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"purpose\": \"signup\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/auth/send-otp",
+          "host": ["{{base_url}}"],
+          "path": ["api", "auth", "send-otp"]
+        },
+        "description": "Test missing required field\n\nExpected: 400 Bad Request"
+      },
+      "response": []
+    },
+    {
+      "name": "5. Send OTP - Missing Purpose",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"phone\": \"+1234567890\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/auth/send-otp",
+          "host": ["{{base_url}}"],
+          "path": ["api", "auth", "send-otp"]
+        },
+        "description": "Test missing required field\n\nExpected: 400 Bad Request"
+      },
+      "response": []
+    },
+    {
+      "name": "6. Send OTP - Different Purposes",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"phone\": \"+9876543210\",\n  \"purpose\": \"login\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/auth/send-otp",
+          "host": ["{{base_url}}"],
+          "path": ["api", "auth", "send-otp"]
+        },
+        "description": "Test with purpose: 'login' (also test 'reset')\n\nExpected: 200 OK"
+      },
+      "response": []
+    },
+    {
+      "name": "7. Verify OTP - Wrong Code",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"phone\": \"+1234567890\",\n  \"code\": \"000000\",\n  \"purpose\": \"signup\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/auth/verify-otp",
+          "host": ["{{base_url}}"],
+          "path": ["api", "auth", "verify-otp"]
+        },
+        "description": "Try with wrong OTP code\n\nExpected: 401 Unauthorized\n{\n  \"success\": false,\n  \"message\": \"Invalid OTP\"\n}"
+      },
+      "response": []
+    },
+    {
+      "name": "8. Verify OTP - Non-existent OTP",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"phone\": \"+5555555555\",\n  \"code\": \"123456\",\n  \"purpose\": \"signup\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/auth/verify-otp",
+          "host": ["{{base_url}}"],
+          "path": ["api", "auth", "verify-otp"]
+        },
+        "description": "Try OTP that was never sent\n\nExpected: 404 Not Found or 401 Unauthorized"
+      },
+      "response": []
+    },
+    {
+      "name": "9. Verify OTP - Missing Fields",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"phone\": \"+1234567890\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/auth/verify-otp",
+          "host": ["{{base_url}}"],
+          "path": ["api", "auth", "verify-otp"]
+        },
+        "description": "Test missing required fields\n\nExpected: 400 Bad Request"
+      },
+      "response": []
+    },
+    {
+      "name": "10. Verify OTP - 3 Wrong Attempts (Account Lock)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"phone\": \"+1111111111\",\n  \"code\": \"000000\",\n  \"purpose\": \"signup\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/auth/verify-otp",
+          "host": ["{{base_url}}"],
+          "path": ["api", "auth", "verify-otp"]
+        },
+        "description": "STEPS:\n1. First send OTP to +1111111111\n2. Run verify request 3 times with wrong code\n3. 3rd attempt should return 429 (Too Many Requests)\n\nExpected on 3rd try: 429 Too Many Requests\n{\n  \"success\": false,\n  \"message\": \"Too many failed attempts. Account locked for 15 minutes.\"\n}"
+      },
+      "response": []
+    },
+    {
+      "name": "11. Send OTP - Attempt While Account Locked",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"phone\": \"+1111111111\",\n  \"purpose\": \"signup\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/auth/send-otp",
+          "host": ["{{base_url}}"],
+          "path": ["api", "auth", "send-otp"]
+        },
+        "description": "STEPS:\n1. Lock account first using test #10\n2. Try to send OTP while locked\n\nExpected: 429 Too Many Requests\n{\n  \"success\": false,\n  \"message\": \"Account locked. Try again in 15 minutes.\"\n}"
+      },
+      "response": []
+    },
+    {
+      "name": "12. Rate Limit - Rapid OTP Requests",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"phone\": \"+2222222222\",\n  \"purpose\": \"signup\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/auth/send-otp",
+          "host": ["{{base_url}}"],
+          "path": ["api", "auth", "send-otp"]
+        },
+        "description": "STEPS:\n1. Make 6 rapid requests (OTP limit is 5 per 10 min)\n2. 6th request should be rate limited\n\nExpected on 6th request: 429 Too Many Requests"
+      },
+      "response": []
+    },
+    {
+      "name": "13. Get API Info",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api",
+          "host": ["{{base_url}}"],
+          "path": ["api"]
+        },
+        "description": "Get API information\n\nExpected: 200 OK\n{\n  \"message\": \"Abjad Hiring Application API\",\n  \"version\": \"1.0.0\",\n  \"timestamp\": \"...\"\n}"
+      },
+      "response": []
+    },
+    {
+      "name": "14. Get Current User - No Token",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/auth/me",
+          "host": ["{{base_url}}"],
+          "path": ["api", "auth", "me"]
+        },
+        "description": "Try to access protected route without token\n\nExpected: 401 Unauthorized\n{\n  \"success\": false,\n  \"message\": \"Authentication required\"\n}"
+      },
+      "response": []
+    },
+    {
+      "name": "15. Get Current User - Invalid Token",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer invalid.token.here"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/auth/me",
+          "host": ["{{base_url}}"],
+          "path": ["api", "auth", "me"]
+        },
+        "description": "Try with invalid token format\n\nExpected: 401 Unauthorized\n{\n  \"success\": false,\n  \"message\": \"Invalid or expired token\"\n}"
+      },
+      "response": []
+    },
+    {
+      "name": "16. Logout - No Token",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/auth/logout",
+          "host": ["{{base_url}}"],
+          "path": ["api", "auth", "logout"]
+        },
+        "description": "Logout without token (should still work)\n\nExpected: 200 OK\n{\n  \"success\": true,\n  \"message\": \"Logged out\"\n}"
+      },
+      "response": []
+    },
+    {
+      "name": "17. Refresh Token - No Token",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/auth/refresh",
+          "host": ["{{base_url}}"],
+          "path": ["api", "auth", "refresh"]
+        },
+        "description": "Try to refresh without token\n\nExpected: 400 Bad Request or 401 Unauthorized"
+      },
+      "response": []
+    },
+    {
+      "name": "18. Get Sessions - No Token",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/auth/sessions",
+          "host": ["{{base_url}}"],
+          "path": ["api", "auth", "sessions"]
+        },
+        "description": "Try to get sessions without token\n\nExpected: 401 Unauthorized"
+      },
+      "response": []
+    },
+    {
+      "name": "19. Logout All - No Token",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/auth/logout-all",
+          "host": ["{{base_url}}"],
+          "path": ["api", "auth", "logout-all"]
+        },
+        "description": "Try to logout all devices without token\n\nExpected: 401 Unauthorized"
+      },
+      "response": []
+    },
+    {
+      "name": "20. 404 - Endpoint Not Found",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/auth/non-existent",
+          "host": ["{{base_url}}"],
+          "path": ["api", "auth", "non-existent"]
+        },
+        "description": "Test 404 handling\n\nExpected: 404 Not Found"
+      },
+      "response": []
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "access_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "refresh_token",
+      "value": "",
+      "type": "string"
+    }
+  ]
+}

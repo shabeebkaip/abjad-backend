@@ -6,6 +6,7 @@ export interface IOtpCode {
   code: string;        // bcrypt hashed
   purpose: 'signup' | 'login' | 'reset';
   attempts: number;
+  verified: boolean;
   expiresAt: Date;
   createdAt?: Date;
 }
@@ -16,6 +17,7 @@ const otpCodeSchema = new Schema<IOtpCode>(
     code:     { type: String, required: true, select: false },
     purpose:  { type: String, enum: ['signup', 'login', 'reset'], required: true },
     attempts: { type: Number, default: 0 },
+    verified: { type: Boolean, default: false },
     expiresAt:{ type: Date, required: true },
   },
   { timestamps: true }

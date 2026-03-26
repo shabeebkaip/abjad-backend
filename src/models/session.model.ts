@@ -9,6 +9,7 @@ export interface ISession {
     ip?: string;
     platform?: string;
   };
+  ipAddress: string;           // Top-level IP address field
   expiresAt: Date;
   isRevoked: boolean;
   createdAt?: Date;
@@ -23,6 +24,7 @@ export interface ISessionDocument extends Document {
     ip?: string;
     platform?: string;
   };
+  ipAddress: string;
   expiresAt: Date;
   isRevoked: boolean;
 }
@@ -36,6 +38,7 @@ const sessionSchema = new Schema<ISessionDocument>(
       ip: { type: String },
       platform: { type: String },
     },
+    ipAddress: { type: String, required: true },
     expiresAt: { type: Date, required: true },
     isRevoked: { type: Boolean, default: false },
   },
@@ -46,6 +49,7 @@ const sessionSchema = new Schema<ISessionDocument>(
 sessionSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 sessionSchema.index({ userId: 1 });
 sessionSchema.index({ refreshTokenHash: 1 });
+sessionSchema.index({ ipAddress: 1 });
 
 const Session: Model<ISessionDocument> = mongoose.model<ISessionDocument>('Session', sessionSchema);
 

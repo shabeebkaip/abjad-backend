@@ -6,7 +6,10 @@ import nodemailer from 'nodemailer';  // already installed
 import { config } from '../config';
 
 // Twilio client for SMS
-const twilioClient = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+// In test environment, create mock client
+const twilioClient = process.env.NODE_ENV === 'test'
+  ? null
+  : twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
 
 // Nodemailer transporter for email
 const emailTransporter = nodemailer.createTransport({
@@ -20,8 +23,16 @@ const emailTransporter = nodemailer.createTransport({
 
 // Send OTP via SMS
 export const sendOtpSms = async (phone: string, otp: string): Promise<void> => {
+  // In test or development environment, skip actual SMS sending
+  if (process.env.NODE_ENV === 'test' || process.env.NODE_ENV === 'development') {
+    console.log(`\n📱 [${process.env.NODE_ENV.toUpperCase()}] OTP Sent`);
+    console.log(`   Phone: ${phone}`);
+    console.log(`   Code: ${otp}`);
+    return;
+  }
+
   try {
-    await twilioClient.messages.create({
+    await twilioClient!.messages.create({
       body: `Your OTP code is: ${otp}`,
       from: process.env.TWILIO_PHONE_NUMBER,
       to: phone,

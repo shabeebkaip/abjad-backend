@@ -5,13 +5,17 @@
 import { Request, Response, NextFunction } from 'express';
 import authService from './auth.service';
 import { SendOtpDTO, VerifyOtpDTO } from './auth.types';
+import { config } from '../../config';
 
 class AuthController {
   async sendOtp(req: Request, res: Response, next: NextFunction) {
     try {
       const data: SendOtpDTO = req.body;
       await authService.sendOtp(data);
-      res.status(200).json({ message: 'OTP sent successfully' });
+      res.status(200).json({ 
+        success: true, 
+        message: `OTP sent successfully to ${data.phone} for ${data.purpose}` 
+      });
     } catch (error) {
       next(error);
     }
@@ -19,56 +23,95 @@ class AuthController {
 
   async verifyOtp(req: Request, res: Response, next: NextFunction) {
     try {
-      const data: VerifyOtpDTO = req.body;
+      const deviceInfo = {
+        ...(req.body?.deviceInfo || {}),
+        userAgent: req.get('user-agent') || req.body?.deviceInfo?.userAgent,
+        ip: req.ip || req.body?.deviceInfo?.ip,
+      };
+
+      const data: VerifyOtpDTO = {
+        ...req.body,
+        deviceInfo,
+      };
       const [authResponse, refreshToken] = await authService.verifyOtp(data);
 
-      // Set refresh token as secure HTTP-only cookie
-      res.cookie('refreshToken', refreshToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
-        maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+      res.cookie(config.cookie.refreshTokenName, refreshToken, {
+        httpOnly: config.cookie.httpOnly,
+        secure: config.cookie.secure,
+        sameSite: config.cookie.sameSite,
+        maxAge: config.cookie.maxAge,
       });
 
-      res.status(200).json(authResponse);
+      res.status(200).json({
+        success: true,
+        message: authResponse.isNewUser 
+          ? 'Account created and verified successfully' 
+          : 'OTP verified successfully',
+        data: {
+          user: authResponse.user,
+          tokens: authResponse.tokens,
+          isNewUser: authResponse.isNewUser,
+          nextStep: authResponse.nextStep,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async refresh(req: Request, res: Response, next: NextFunction) {
+    try {
+      const refreshToken = req.cookies[config.cookie.refreshTokenName] || req.body.refreshToken;
+      if (!refreshToken) {
+        throw new Error('Refresh token is required');
+      }
+
+      const deviceInfo = {
+        ...(req.body?.deviceInfo || {}),
+        userAgent: req.get('user-agent') || req.body?.deviceInfo?.userAgent,
+        ip: req.ip || req.body?.deviceInfo?.ip,
+      };
+
+      const { accessToken, refreshToken: newRefreshToken } = await authService.refreshTokens(refreshToken, deviceInfo);
+
+      res.cookie(config.cookie.refreshTokenName, newRefreshToken, {
+        httpOnly: config.cookie.httpOnly,
+        secure: config.cookie.secure,
+        sameSite: config.cookie.sameSite,
+        maxAge: config.cookie.maxAge,
+      });
+
+      res.status(200).json({
+        success: true,
+        message: 'Access token refreshed successfully',
+        data: { accessToken },
+      });
     } catch (error) {
       next(error);
     }
   }
 
   async refreshTokens(req: Request, res: Response, next: NextFunction) {
-    try {
-      const refreshToken = req.cookies.refreshToken || req.body.refreshToken;
-      if (!refreshToken) {
-        throw new Error('Refresh token is required');
-      }
-
-      const { accessToken, refreshToken: newRefreshToken } = await authService.refreshTokens(refreshToken);
-
-      // Update refresh token cookie
-      res.cookie('refreshToken', newRefreshToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
-        maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-      });
-
-      res.status(200).json({ accessToken, expiresIn: 900 });
-    } catch (error) {
-      next(error);
-    }
+    return this.refresh(req, res, next);
   }
 
   async logout(req: Request, res: Response, next: NextFunction) {
     try {
-      const refreshToken = req.cookies.refreshToken || req.body.refreshToken;
+      const refreshToken = req.cookies[config.cookie.refreshTokenName] || req.body.refreshToken;
       if (refreshToken) {
         await authService.logout(refreshToken);
       }
 
-      // Clear refresh token cookie
-      res.clearCookie('refreshToken');
-      res.status(200).json({ message: 'Logged out successfully' });
+      res.clearCookie(config.cookie.refreshTokenName, {
+        httpOnly: true,
+        secure: config.cookie.secure,
+        sameSite: config.cookie.sameSite,
+      });
+
+      res.status(200).json({ 
+        success: true, 
+        message: 'Logged out successfully from current device' 
+      });
     } catch (error) {
       next(error);
     }
@@ -83,9 +126,43 @@ class AuthController {
 
       await authService.logoutAll(userId);
 
-      // Clear refresh token cookie
-      res.clearCookie('refreshToken');
-      res.status(200).json({ message: 'Logged out from all devices' });
+      res.clearCookie(config.cookie.refreshTokenName, {
+        httpOnly: true,
+        secure: config.cookie.secure,
+        sameSite: config.cookie.sameSite,
+      });
+
+      res.status(200).json({ success: true, message: 'Logged out from all devices' });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async me(req: Request, res: Response, next: NextFunction) {
+    try {
+      res.status(200).json({
+        success: true,
+        message: 'User profile retrieved successfully',
+        data: (req as any).user
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async sessions(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = (req as any).user?.userId;
+      if (!userId) {
+        throw new Error('User ID is required');
+      }
+
+      const activeSessions = await authService.getUserSessions(userId);
+      res.status(200).json({
+        success: true,
+        message: `Retrieved ${activeSessions.length} active session(s)`,
+        data: activeSessions
+      });
     } catch (error) {
       next(error);
     }

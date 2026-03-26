@@ -40,11 +40,15 @@ class AuthRepository {
       phone: data.phone,
       role: data.role || 'teacher',
       language: data.language || 'ar',
+      status: 'active',
       isPhoneVerified: true,
-      isActive: true,
+      isEmailVerified: false,
       isProfileComplete: false,
       profileStep: 'basic',
       failedLoginAttempts: 0,
+      loginCount: 0,
+      pushNotificationsEnabled: true,
+      emailNotificationsEnabled: true,
       deviceTokens: [],
     });
     return user.save();
@@ -159,12 +163,14 @@ class AuthRepository {
       ip?: string;
       platform?: string;
     };
+    ipAddress: string;
     expiresAt: Date;
   }) {
     const session = new Session({
       userId: data.userId,
       refreshTokenHash: data.refreshTokenHash,
       deviceInfo: data.deviceInfo || {},
+      ipAddress: data.ipAddress,
       expiresAt: data.expiresAt,
       isRevoked: false,
     });

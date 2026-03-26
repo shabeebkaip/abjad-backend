@@ -14,10 +14,30 @@ export const validate = (schema: z.ZodSchema) =>
       schema.parse(req.body);
       next();
     } catch (error: any) {
+      // Format Zod errors into readable field-specific messages
+      const fieldErrors: Record<string, string> = {};
+      const errorMessages: string[] = [];
+
+      // Check if it's a Zod error
+      if (error instanceof z.ZodError) {
+        error.issues.forEach((issue: any) => {
+          const field = issue.path?.[0] || 'unknown';
+          const message = issue.message;
+          
+          // Store field-specific error
+          fieldErrors[field] = message;
+          
+          // Create readable error message
+          const capitalizedField = String(field).charAt(0).toUpperCase() + String(field).slice(1);
+          errorMessages.push(`${capitalizedField}: ${message}`);
+        });
+      }
+
       res.status(400).json({
         success: false,
-        message: 'Validation error',
-        errors: error.errors || [],
+        message: 'Validation failed - please check your input',
+        errors: errorMessages.length > 0 ? errorMessages : ['Invalid request data'],
+        fieldErrors: fieldErrors,
       });
     }
   };

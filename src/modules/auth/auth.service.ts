@@ -1,6 +1,6 @@
 // src/modules/auth/auth.service.ts
 // Business logic for auth — calls repository + utils, never touches HTTP
-// Throws plain Error objects (caught by global error handler)
+// Throws AppError objects (caught by global error handler)
 // Exported as singleton instance
 
 import authRepository from './auth.repository';
@@ -9,11 +9,12 @@ import { config } from '../../config';
 import { generateOtp, hashOtp, otpExpiry, verifyOtp as verifyOtpHash } from '../../utils/otp.util';
 import { sendOtpSms } from '../../utils/otp-sender.util';
 import { signAccessToken, signRefreshToken, verifyRefreshToken, hashToken, JwtPayload } from '../../utils/jwt.util';
+import { AppError } from '../../utils/app-error.util';
 
 class AuthService {
   /**
    * Send OTP to user's phone
-   * - Checks account lock status
+   * - Checks account lock status (defensive)
    * - Generates + hashes OTP
    * - Stores in database (upsert to handle multiple requests)
    * - Delivers via SMS
@@ -21,10 +22,11 @@ class AuthService {
   async sendOtp(dto: SendOtpDTO): Promise<void> {
     const { phone, purpose } = dto;
 
-    // Check if account is locked
+    // Check if account is locked (defensive check)
     const user = await authRepository.findUserByPhone(phone);
     if (user?.lockedUntil && user.lockedUntil > new Date()) {
-      throw new Error('Account locked. Try again later.');
+      const lockExpiresIn = Math.ceil((user.lockedUntil.getTime() - Date.now()) / 60000);
+      throw AppError.tooManyRequests(`Account temporarily locked due to too many failed attempts. Please try again in ${lockExpiresIn} minutes.`);
     }
 
     // Generate + hash OTP
@@ -47,6 +49,7 @@ class AuthService {
 
   /**
    * Verify OTP and authenticate user
+   * - Checks account lock status (defensive)
    * - Validates OTP code against stored hash
    * - Implements lockout logic on max failed attempts
    * - Creates user on signup, or finds existing user
@@ -57,32 +60,39 @@ class AuthService {
   async verifyOtp(dto: VerifyOtpDTO): Promise<[AuthResponseDTO, string]> {
     const { phone, code, purpose, deviceInfo } = dto;
 
+    // 0. Check if ACCOUNT is locked (defensive — should also be blocked in sendOtp)
+    let user = await authRepository.findUserByPhone(phone);
+    if (user?.lockedUntil && user.lockedUntil > new Date()) {
+      const lockExpiresIn = Math.ceil((user.lockedUntil.getTime() - Date.now()) / 60000);
+      throw AppError.tooManyRequests(`Account temporarily locked due to too many failed attempts. Please try again in ${lockExpiresIn} minutes.`);
+    }
+
     // 1. Find OTP record
     const otpRecord = await authRepository.findOtp(phone, purpose);
     if (!otpRecord) {
-      throw new Error('OTP not found or expired');
+      throw AppError.notFound(`No OTP found for ${phone}. Please request a new OTP.`);
     }
 
-    // 2. Check max attempts — lock account if exceeded
+    // 2. Check max OTP attempts — lock account if exceeded
     if (otpRecord.attempts >= config.otp.maxAttempts) {
       const lockUntil = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
       await authRepository.lockAccount(phone, lockUntil);
-      throw new Error('Too many failed attempts. Account locked for 15 minutes.');
+      throw AppError.tooManyRequests(`Too many failed OTP verification attempts (${otpRecord.attempts}/${config.otp.maxAttempts}). Account locked for 15 minutes. Please try again later.`);
     }
 
     // 3. Verify OTP code against hash
     const valid = await verifyOtpHash(code, otpRecord.code);
     if (!valid) {
-      // Increment failed attempts
-      await authRepository.incrementOtpAttempts(otpRecord._id!);
-      throw new Error('Invalid OTP');
+      // Increment OTP verification attempts (atomic $inc)
+      await authRepository.incrementOtpAttempts(otpRecord._id!.toString());
+      const remainingAttempts = config.otp.maxAttempts - (otpRecord.attempts + 1);
+      throw AppError.unauthorized(`Invalid OTP code. You have ${remainingAttempts} attempt(s) remaining.`);
     }
 
-    // 4. Delete used OTP
+    // 4. Delete used OTP (successful verification)
     await authRepository.deleteOtp(phone, purpose);
 
-    // 5. Find or create user
-    let user = await authRepository.findUserByPhone(phone);
+    // 5. Find or create user (user already fetched in step 0)
     const isNewUser = !user;
 
     if (!user) {
@@ -93,7 +103,7 @@ class AuthService {
       });
     }
 
-    // 6. Reset failed logins + update lastLoginAt
+    // 6. Reset failed attempts + update lastLoginAt
     await authRepository.resetFailedLogins(phone);
     await authRepository.updateLastLogin(user._id!.toString());
 
@@ -113,6 +123,7 @@ class AuthService {
       userId: user._id!.toString(),
       refreshTokenHash,
       deviceInfo: deviceInfo || {},
+      ipAddress: deviceInfo?.ip || 'unknown',
       expiresAt,
     });
 
@@ -156,13 +167,13 @@ class AuthService {
    * - Revokes old session and issues new tokens
    * - Creates new session with new refresh token hash
    */
-  async refreshTokens(refreshToken: string): Promise<{ accessToken: string; refreshToken: string }> {
+  async refreshTokens(refreshToken: string, _deviceInfo?: { userAgent?: string; ip?: string; platform?: string }): Promise<{ accessToken: string; refreshToken: string }> {
     // 1. Verify JWT signature
     let payload: JwtPayload;
     try {
       payload = verifyRefreshToken(refreshToken);
     } catch (error) {
-      throw new Error('Invalid or expired refresh token');
+      throw new Error('Refresh token is invalid or expired. Please login again.');
     }
 
     // 2. Find session by hash
@@ -172,15 +183,15 @@ class AuthService {
     if (!session) {
       // Token not in DB — possible reuse attack. Revoke ALL sessions for this user.
       await authRepository.revokeAllSessions(payload.userId);
-      throw new Error('Refresh token reuse detected. All sessions revoked.');
+      throw new Error('Potential security issue detected: Refresh token reuse detected. All your sessions have been revoked for security. Please login again.');
     }
 
     if (session.isRevoked) {
-      throw new Error('Session revoked');
+      throw new Error('Your session has been revoked. Please login again.');
     }
 
     // 3. Revoke old session
-    await authRepository.revokeSession(session._id!);
+    await authRepository.revokeSession(session._id!.toString());
 
     // 4. Issue new tokens
     const newPayload: JwtPayload = {
@@ -198,6 +209,7 @@ class AuthService {
       userId: payload.userId,
       refreshTokenHash: newTokenHash,
       deviceInfo: session.deviceInfo,
+      ipAddress: session.deviceInfo?.ip || session.ipAddress || 'unknown',
       expiresAt,
     });
 
@@ -214,7 +226,7 @@ class AuthService {
     const hash = hashToken(refreshToken);
     const session = await authRepository.findSession(hash);
     if (session) {
-      await authRepository.revokeSession(session._id!);
+      await authRepository.revokeSession(session._id!.toString());
     }
   }
 
@@ -223,6 +235,13 @@ class AuthService {
    */
   async logoutAll(userId: string): Promise<void> {
     await authRepository.revokeAllSessions(userId);
+  }
+
+  /**
+   * Return active sessions for current user
+   */
+  async getUserSessions(userId: string) {
+    return authRepository.getUserSessions(userId);
   }
 }
 
