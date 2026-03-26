@@ -99,7 +99,7 @@ class AuthService {
       // Create new user on signup
       user = await authRepository.createUser({
         phone,
-        role: 'teacher', // default role
+        role: dto.role || 'teacher',
       });
     }
 

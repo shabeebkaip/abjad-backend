@@ -9,6 +9,7 @@ export interface VerifyOtpDTO {
   phone: string;
   code: string;
   purpose: 'signup' | 'login' | 'reset';
+  role?: 'teacher' | 'school';
   deviceInfo?: {
     userAgent?: string;
     ip?: string;
