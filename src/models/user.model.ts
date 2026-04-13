@@ -5,8 +5,8 @@ export interface IUser {
   _id?: string;
   uuid: string;
   name?: string;
-  phone: string;
-  email?: string;
+  email: string;
+  phone?: string;
   password?: string;
   role: 'teacher' | 'school' | 'admin';
   status: 'active' | 'suspended' | 'blocked' | 'pending';
@@ -30,8 +30,8 @@ export interface IUser {
 export interface IUserDocument extends Document {
   uuid: string;
   name?: string;
-  phone: string;
-  email?: string;
+  email: string;
+  phone?: string;
   password?: string;
   role: 'teacher' | 'school' | 'admin';
   status: 'active' | 'suspended' | 'blocked' | 'pending';
@@ -73,19 +73,15 @@ const userSchema = new Schema<UserDocument>(
       default: () => uuidv4(),
     },
     name: { type: String, trim: true },
-    phone: {
+    email: {
       type: String,
       required: true,
       unique: true,
-      trim: true,
-      validate: {
-        validator: (v: string) => /^\+9665[0-9]{8}$/.test(v),
-        message: "Invalid Saudi mobile number (+9665xxxxxxxx)",
-      },
-    },
-    email: {
-      type: String,
       lowercase: true,
+      trim: true,
+    },
+    phone: {
+      type: String,
       trim: true,
       sparse: true,
       unique: true,
@@ -102,7 +98,7 @@ const userSchema = new Schema<UserDocument>(
       default: "pending",
     },
     isPhoneVerified: { type: Boolean, default: false },
-    isEmailVerified: { type: Boolean, default: false },
+    isEmailVerified: { type: Boolean, default: true },
     isProfileComplete: { type: Boolean, default: false },
     profileStep: {
       type: String,
@@ -131,7 +127,6 @@ userSchema.index({ createdAt: -1 }); // createdAt → index
 // Composite & Special Indexes
 userSchema.index({ role: 1, status: 1 }); // Compound: find users by role + status
 userSchema.index({ loginCount: -1 }); // Top active users
-userSchema.index({ lockedUntil: 1 }, { expireAfterSeconds: 0 }); // TTL - auto-delete
 
 // ─── Instance Methods ─────────────────────────────────────────
 userSchema.methods.isLocked = function (this: UserDocument): boolean {

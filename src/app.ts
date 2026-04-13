@@ -22,10 +22,11 @@ app.use(cors({
   credentials: true
 }));
 
-// Rate limiting
+// Rate limiting (disabled in test to avoid 429s during test runs)
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100 // limit each IP to 100 requests per windowMs
+  max: 100,
+  skip: (_req) => process.env.NODE_ENV === 'test',
 });
 app.use('/api', limiter);
 

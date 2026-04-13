@@ -7,23 +7,23 @@ import authRepository from './auth.repository';
 import { SendOtpDTO, VerifyOtpDTO, AuthResponseDTO } from './auth.types';
 import { config } from '../../config';
 import { generateOtp, hashOtp, otpExpiry, verifyOtp as verifyOtpHash } from '../../utils/otp.util';
-import { sendOtpSms } from '../../utils/otp-sender.util';
+import { sendOtpEmail } from '../../utils/otp-sender.util';
 import { signAccessToken, signRefreshToken, verifyRefreshToken, hashToken, JwtPayload } from '../../utils/jwt.util';
 import { AppError } from '../../utils/app-error.util';
 
 class AuthService {
   /**
-   * Send OTP to user's phone
+   * Send OTP to user's email
    * - Checks account lock status (defensive)
    * - Generates + hashes OTP
    * - Stores in database (upsert to handle multiple requests)
-   * - Delivers via SMS
+   * - Delivers via Email
    */
   async sendOtp(dto: SendOtpDTO): Promise<void> {
-    const { phone, purpose } = dto;
+    const { email, purpose } = dto;
 
     // Check if account is locked (defensive check)
-    const user = await authRepository.findUserByPhone(phone);
+    const user = await authRepository.findUserByEmail(email);
     if (user?.lockedUntil && user.lockedUntil > new Date()) {
       const lockExpiresIn = Math.ceil((user.lockedUntil.getTime() - Date.now()) / 60000);
       throw AppError.tooManyRequests(`Account temporarily locked due to too many failed attempts. Please try again in ${lockExpiresIn} minutes.`);
@@ -34,17 +34,17 @@ class AuthService {
     const hash = await hashOtp(otp);
     const expiresAt = otpExpiry();
 
-    // Upsert replaces any existing OTP for this phone+purpose
+    // Upsert replaces any existing OTP for this email+purpose
     // (handles race condition if multiple requests come in simultaneously)
     await authRepository.upsertOtp({
-      phone,
+      email,
       purpose,
       code: hash,
       expiresAt,
     });
 
-    // Deliver OTP via SMS
-    await sendOtpSms(phone, otp);
+    // Deliver OTP via Email
+    await sendOtpEmail(email, otp);
   }
 
   /**
@@ -58,25 +58,25 @@ class AuthService {
    * - Returns tuple: [authResponse, refreshToken] for controller to set cookie
    */
   async verifyOtp(dto: VerifyOtpDTO): Promise<[AuthResponseDTO, string]> {
-    const { phone, code, purpose, deviceInfo } = dto;
+    const { email, code, purpose, deviceInfo } = dto;
 
     // 0. Check if ACCOUNT is locked (defensive — should also be blocked in sendOtp)
-    let user = await authRepository.findUserByPhone(phone);
+    let user = await authRepository.findUserByEmail(email);
     if (user?.lockedUntil && user.lockedUntil > new Date()) {
       const lockExpiresIn = Math.ceil((user.lockedUntil.getTime() - Date.now()) / 60000);
       throw AppError.tooManyRequests(`Account temporarily locked due to too many failed attempts. Please try again in ${lockExpiresIn} minutes.`);
     }
 
     // 1. Find OTP record
-    const otpRecord = await authRepository.findOtp(phone, purpose);
+    const otpRecord = await authRepository.findOtp(email, purpose);
     if (!otpRecord) {
-      throw AppError.notFound(`No OTP found for ${phone}. Please request a new OTP.`);
+      throw AppError.notFound(`No OTP found for ${email}. Please request a new OTP.`);
     }
 
     // 2. Check max OTP attempts — lock account if exceeded
     if (otpRecord.attempts >= config.otp.maxAttempts) {
       const lockUntil = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
-      await authRepository.lockAccount(phone, lockUntil);
+      await authRepository.lockAccount(email, lockUntil);
       throw AppError.tooManyRequests(`Too many failed OTP verification attempts (${otpRecord.attempts}/${config.otp.maxAttempts}). Account locked for 15 minutes. Please try again later.`);
     }
 
@@ -90,7 +90,7 @@ class AuthService {
     }
 
     // 4. Delete used OTP (successful verification)
-    await authRepository.deleteOtp(phone, purpose);
+    await authRepository.deleteOtp(email, purpose);
 
     // 5. Find or create user (user already fetched in step 0)
     const isNewUser = !user;
@@ -98,20 +98,20 @@ class AuthService {
     if (!user) {
       // Create new user on signup
       user = await authRepository.createUser({
-        phone,
+        email,
         role: dto.role || 'teacher',
       });
     }
 
     // 6. Reset failed attempts + update lastLoginAt
-    await authRepository.resetFailedLogins(phone);
+    await authRepository.resetFailedLogins(email);
     await authRepository.updateLastLogin(user._id!.toString());
 
     // 7. Issue tokens
     const payload: JwtPayload = {
       userId: user._id!.toString(),
       role: user.role,
-      phone,
+      email,
     };
     const accessToken = signAccessToken(payload);
     const refreshToken = signRefreshToken(payload);
@@ -149,10 +149,10 @@ class AuthService {
   private mapToAuthUserDTO(user: any) {
     return {
       _id: user._id.toString(),
-      phone: user.phone,
+      email: user.email,
       name: user.name,
       role: user.role,
-      isPhoneVerified: user.isPhoneVerified,
+      isEmailVerified: user.isEmailVerified,
       isProfileComplete: user.isProfileComplete,
       profileStep: user.profileStep,
       language: user.language,
@@ -197,7 +197,7 @@ class AuthService {
     const newPayload: JwtPayload = {
       userId: payload.userId,
       role: payload.role,
-      phone: payload.phone,
+      email: payload.email,
     };
     const newAccessToken = signAccessToken(newPayload);
     const newRefreshToken = signRefreshToken(newPayload);

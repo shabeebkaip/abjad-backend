@@ -5,7 +5,7 @@ import { config } from '../config';
 export interface JwtPayload {
   userId: string;
   role: string;
-  phone: string;
+  email: string;
 }
 
 export const signAccessToken = (payload: JwtPayload): string =>

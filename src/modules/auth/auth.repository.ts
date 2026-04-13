@@ -15,10 +15,10 @@ class AuthRepository {
   // ────────────────────────────────────────────────────────
 
   /**
-   * Find user by phone number
+   * Find user by email address
    */
-  async findUserByPhone(phone: string) {
-    return User.findOne({ phone });
+  async findUserByEmail(email: string) {
+    return User.findOne({ email: email.toLowerCase() });
   }
 
   /**
@@ -32,17 +32,17 @@ class AuthRepository {
    * Create a new user on first signup
    */
   async createUser(data: {
-    phone: string;
+    email: string;
     role: 'teacher' | 'school' | 'admin';
     language?: string;
   }) {
     const user = new User({
-      phone: data.phone,
+      email: data.email.toLowerCase(),
       role: data.role || 'teacher',
       language: data.language || 'ar',
       status: 'active',
-      isPhoneVerified: true,
-      isEmailVerified: false,
+      isPhoneVerified: false,
+      isEmailVerified: true,
       isProfileComplete: false,
       profileStep: 'basic',
       failedLoginAttempts: 0,
@@ -68,9 +68,9 @@ class AuthRepository {
   /**
    * Atomically increment failed login attempts
    */
-  async incrementFailedLogins(phone: string) {
+  async incrementFailedLogins(email: string) {
     return User.findOneAndUpdate(
-      { phone },
+      { email: email.toLowerCase() },
       { $inc: { failedLoginAttempts: 1 } },
       { new: true }
     );
@@ -79,9 +79,9 @@ class AuthRepository {
   /**
    * Reset failed login counter and clear lockout
    */
-  async resetFailedLogins(phone: string) {
+  async resetFailedLogins(email: string) {
     return User.findOneAndUpdate(
-      { phone },
+      { email: email.toLowerCase() },
       { failedLoginAttempts: 0, lockedUntil: null },
       { new: true }
     );
@@ -90,9 +90,9 @@ class AuthRepository {
   /**
    * Lock account until a specific time
    */
-  async lockAccount(phone: string, until: Date) {
+  async lockAccount(email: string, until: Date) {
     return User.findOneAndUpdate(
-      { phone },
+      { email: email.toLowerCase() },
       { lockedUntil: until },
       { new: true }
     );
@@ -103,17 +103,17 @@ class AuthRepository {
   // ────────────────────────────────────────────────────────
 
   /**
-   * Upsert OTP record for phone+purpose.
+   * Upsert OTP record for email+purpose.
    * Uses findOneAndUpdate with upsert: true to avoid race conditions.
    */
   async upsertOtp(data: {
-    phone: string;
+    email: string;
     purpose: 'signup' | 'login' | 'reset';
     code: string;  // hashed code
     expiresAt: Date;
   }) {
     return OtpCode.findOneAndUpdate(
-      { phone: data.phone, purpose: data.purpose },
+      { email: data.email.toLowerCase(), purpose: data.purpose },
       {
         code: data.code,
         expiresAt: data.expiresAt,
@@ -124,10 +124,10 @@ class AuthRepository {
   }
 
   /**
-   * Find OTP by phone and purpose with code field included
+   * Find OTP by email and purpose with code field included
    */
-  async findOtp(phone: string, purpose: string) {
-    return OtpCode.findOne({ phone, purpose }).select('+code');
+  async findOtp(email: string, purpose: string) {
+    return OtpCode.findOne({ email: email.toLowerCase(), purpose }).select('+code');
   }
 
   /**
@@ -142,10 +142,10 @@ class AuthRepository {
   }
 
   /**
-   * Delete OTP after successful verification by phone+purpose
+   * Delete OTP after successful verification by email+purpose
    */
-  async deleteOtp(phone: string, purpose: string) {
-    return OtpCode.findOneAndDelete({ phone, purpose });
+  async deleteOtp(email: string, purpose: string) {
+    return OtpCode.findOneAndDelete({ email: email.toLowerCase(), purpose });
   }
 
   // ────────────────────────────────────────────────────────

@@ -18,7 +18,7 @@ export const otpLimiter = rateLimit({
   message: { success: false, message: 'Too many OTP requests' },
   standardHeaders: true,
   legacyHeaders: false,
-  skip: (_req) => process.env.NODE_ENV === 'development', // Skip in development
+  skip: (_req) => process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test',
 });
 
 /**
@@ -33,6 +33,7 @@ export const refreshLimiter = rateLimit({
   message: { success: false, message: 'Too many refresh requests' },
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (_req) => process.env.NODE_ENV === 'test',
 });
 
 /**

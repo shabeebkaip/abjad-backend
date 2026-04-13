@@ -4,7 +4,7 @@ import { verifyAccessToken } from '../utils/jwt.util';
 export interface AuthRequest extends Request {
   user?: {
     userId: string;
-    phone: string;
+    email: string;
     role: string;
   };
 }

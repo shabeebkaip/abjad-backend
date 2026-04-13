@@ -1,12 +1,12 @@
 // ── Request DTOs ──────────────────────────────────
 
 export interface SendOtpDTO {
-  phone: string;
+  email: string;
   purpose: 'signup' | 'login' | 'reset';
 }
 
 export interface VerifyOtpDTO {
-  phone: string;
+  email: string;
   code: string;
   purpose: 'signup' | 'login' | 'reset';
   role?: 'teacher' | 'school';
@@ -41,10 +41,10 @@ export interface AuthResponseDTO {
 
 export interface AuthUserDTO {
   _id: string;
-  phone: string;
+  email: string;
   name?: string;
   role: string;
-  isPhoneVerified: boolean;
+  isEmailVerified: boolean;
   isProfileComplete: boolean;
   profileStep: string;
   language: string;

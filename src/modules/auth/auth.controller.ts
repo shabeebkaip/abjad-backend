@@ -14,7 +14,7 @@ class AuthController {
       await authService.sendOtp(data);
       res.status(200).json({ 
         success: true, 
-        message: `OTP sent successfully to ${data.phone} for ${data.purpose}` 
+        message: `OTP sent successfully to ${data.email} for ${data.purpose}` 
       });
     } catch (error) {
       next(error);
@@ -61,9 +61,10 @@ class AuthController {
 
   async refresh(req: Request, res: Response, next: NextFunction) {
     try {
-      const refreshToken = req.cookies[config.cookie.refreshTokenName] || req.body.refreshToken;
+      const refreshToken = req.cookies[config.cookie.refreshTokenName] || req.body?.refreshToken;
       if (!refreshToken) {
-        throw new Error('Refresh token is required');
+        res.status(400).json({ success: false, message: 'Refresh token is required' });
+        return;
       }
 
       const deviceInfo = {
@@ -97,7 +98,7 @@ class AuthController {
 
   async logout(req: Request, res: Response, next: NextFunction) {
     try {
-      const refreshToken = req.cookies[config.cookie.refreshTokenName] || req.body.refreshToken;
+      const refreshToken = req.cookies[config.cookie.refreshTokenName] || req.body?.refreshToken;
       if (refreshToken) {
         await authService.logout(refreshToken);
       }

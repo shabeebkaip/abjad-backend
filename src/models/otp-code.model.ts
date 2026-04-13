@@ -2,7 +2,7 @@ import mongoose, { Schema, Model } from 'mongoose';
 
 export interface IOtpCode {
   _id?: string;
-  phone: string;
+  email: string;
   code: string;        // bcrypt hashed
   purpose: 'signup' | 'login' | 'reset';
   attempts: number;
@@ -13,7 +13,7 @@ export interface IOtpCode {
 
 const otpCodeSchema = new Schema<IOtpCode>(
   {
-    phone:    { type: String, required: true, index: true },
+    email:    { type: String, required: true, index: true, lowercase: true, trim: true },
     code:     { type: String, required: true, select: false },
     purpose:  { type: String, enum: ['signup', 'login', 'reset'], required: true },
     attempts: { type: Number, default: 0 },
@@ -25,8 +25,8 @@ const otpCodeSchema = new Schema<IOtpCode>(
 
 // Auto-delete expired OTPs via MongoDB TTL index
 otpCodeSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
-// One active OTP per phone+purpose
-otpCodeSchema.index({ phone: 1, purpose: 1 }, { unique: true });
+// One active OTP per email+purpose
+otpCodeSchema.index({ email: 1, purpose: 1 }, { unique: true });
 
 const OtpCode: Model<IOtpCode> =
   mongoose.models.OtpCode || mongoose.model<IOtpCode>('OtpCode', otpCodeSchema);
