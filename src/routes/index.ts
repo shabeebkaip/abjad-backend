@@ -1,22 +1,74 @@
 import { Router, Response } from 'express';
 import authRoutes from '../modules/auth/auth.routes';
+import uploadRoutes from '../modules/upload/upload.routes';
+import teacherProfileRoutes from '../modules/teacher-profile/teacher-profile.routes';
+import jobsRoutes from '../modules/jobs/jobs.routes';
+import applicationsRoutes from '../modules/applications/applications.routes';
+import interviewsRoutes from '../modules/interviews/interviews.routes';
+import offersRoutes from '../modules/offers/offers.routes';
+import notificationsRoutes from '../modules/notifications/notifications.routes';
+import supportRoutes from '../modules/support/support.routes';
+import dashboardRoutes from '../modules/dashboard/dashboard.routes';
+import schoolProfileRoutes from '../modules/school-profile/school-profile.routes';
+import schoolJobsRoutes from '../modules/school-jobs/school-jobs.routes';
+import schoolCandidatesRoutes from '../modules/school-candidates/school-candidates.routes';
+import schoolApplicationsRoutes from '../modules/school-applications/school-applications.routes';
+import schoolShortlistRoutes from '../modules/school-shortlist/school-shortlist.routes';
+import schoolInterviewsRoutes from '../modules/school-interviews/school-interviews.routes';
+import schoolOffersRoutes from '../modules/school-offers/school-offers.routes';
+import schoolDashboardRoutes from '../modules/school-dashboard/school-dashboard.routes';
+import schoolTeamRoutes from '../modules/school-team/school-team.routes';
+import adminRoutes from '../modules/admin/admin.routes';
 
 const router: Router = Router();
 
 // Health check
 router.get('/', (_req, res: Response) => {
-  res.json({ 
+  res.json({
     message: 'Abjad Hiring Application API',
     version: '1.0.0',
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
   });
 });
 
-// Module routes
+// Auth & file upload
 router.use('/auth', authRoutes);
+router.use('/upload', uploadRoutes);
 
-// Add more module routes here as you create them
-// router.use('/jobs', jobsRoutes);
-// router.use('/applications', applicationsRoutes);
+// Teacher features
+router.use('/teacher/profile', teacherProfileRoutes);
+router.use('/teacher/dashboard', dashboardRoutes);
+
+// Jobs (public listing + teacher saved jobs)
+router.use('/jobs', jobsRoutes);
+
+// Applications (teacher)
+router.use('/applications', applicationsRoutes);
+
+// Interviews (teacher responses)
+router.use('/interviews', interviewsRoutes);
+
+// Offers (teacher responses)
+router.use('/offers', offersRoutes);
+
+// Notifications
+router.use('/notifications', notificationsRoutes);
+
+// Support & feedback (shared: teacher + school)
+router.use('/support', supportRoutes);
+
+// School features
+router.use('/school/profile', schoolProfileRoutes);
+router.use('/school/jobs', schoolJobsRoutes);
+router.use('/school/candidates', schoolCandidatesRoutes);
+router.use('/school/applications', schoolApplicationsRoutes);
+router.use('/school/shortlists', schoolShortlistRoutes);
+router.use('/school/interviews', schoolInterviewsRoutes);
+router.use('/school/offers', schoolOffersRoutes);
+router.use('/school/dashboard', schoolDashboardRoutes);
+router.use('/school/team', schoolTeamRoutes);
+
+// Admin
+router.use('/admin', adminRoutes);
 
 export default router;

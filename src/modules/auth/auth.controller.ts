@@ -4,6 +4,7 @@
 
 import { Request, Response, NextFunction } from 'express';
 import authService from './auth.service';
+import authRepository from './auth.repository';
 import { SendOtpDTO, VerifyOtpDTO } from './auth.types';
 import { config } from '../../config';
 
@@ -141,10 +142,32 @@ class AuthController {
 
   async me(req: Request, res: Response, next: NextFunction) {
     try {
+      // JWT payload is always present (verified by authenticate middleware)
+      const jwtUser = (req as any).user as { userId: string; email: string; role: string };
+
+      // Fetch full user from DB to get name fields — fall back to JWT-only if DB call fails
+      let dbUser: any = null;
+      try {
+        dbUser = await authRepository.findUserById(jwtUser.userId);
+      } catch {
+        // DB failure — continue with JWT data only
+      }
+
       res.status(200).json({
         success: true,
         message: 'User profile retrieved successfully',
-        data: (req as any).user
+        data: {
+          userId: jwtUser.userId,
+          email: dbUser?.email ?? jwtUser.email,
+          role: dbUser?.role ?? jwtUser.role,
+          firstName: dbUser?.firstName,
+          lastName: dbUser?.lastName,
+          schoolName: dbUser?.schoolName,
+          isEmailVerified: dbUser?.isEmailVerified ?? true,
+          isProfileComplete: dbUser?.isProfileComplete ?? false,
+          profileStep: dbUser?.profileStep ?? 'basic',
+          language: dbUser?.language ?? 'ar',
+        },
       });
     } catch (error) {
       next(error);

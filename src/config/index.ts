@@ -40,15 +40,24 @@ export const config = {
     url: process.env.REDIS_URL || 'redis://localhost:6379',
   },
   
-  // CORS
+  // CORS — supports comma-separated origins in CLIENT_URL env var
   cors: {
-    origin: process.env.CLIENT_URL || ['http://localhost:3000', 'http://localhost:3001'],
+    origin: process.env.CLIENT_URL
+      ? process.env.CLIENT_URL.split(',').map((o) => o.trim())
+      : ['http://localhost:3000', 'http://localhost:3001'],
   },
   
   // File Upload
   upload: {
     dir: process.env.UPLOAD_DIR || 'uploads',
     maxSize: parseInt(process.env.MAX_FILE_SIZE || '5242880'), // 5MB default
+  },
+
+  // Cloudinary
+  cloudinary: {
+    cloudName: process.env.CLOUDINARY_CLOUD_NAME || '',
+    apiKey: process.env.CLOUDINARY_API_KEY || '',
+    apiSecret: process.env.CLOUDINARY_API_SECRET || '',
   },
   
   // Email (for future use)

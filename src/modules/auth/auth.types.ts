@@ -10,6 +10,15 @@ export interface VerifyOtpDTO {
   code: string;
   purpose: 'signup' | 'login' | 'reset';
   role?: 'teacher' | 'school';
+  // Teacher registration fields
+  firstName?: string;
+  lastName?: string;
+  // School registration fields
+  schoolName?: string;
+  contactName?: string;
+  phone?: string;
+  city?: string;
+  schoolType?: string;
   deviceInfo?: {
     userAgent?: string;
     ip?: string;
@@ -40,10 +49,12 @@ export interface AuthResponseDTO {
 }
 
 export interface AuthUserDTO {
-  _id: string;
+  userId: string;
   email: string;
-  name?: string;
   role: string;
+  firstName?: string;
+  lastName?: string;
+  schoolName?: string;
   isEmailVerified: boolean;
   isProfileComplete: boolean;
   profileStep: string;

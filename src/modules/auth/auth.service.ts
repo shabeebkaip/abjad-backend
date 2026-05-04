@@ -96,11 +96,22 @@ class AuthService {
     const isNewUser = !user;
 
     if (!user) {
-      // Create new user on signup
+      // Create new user on signup — persist name fields from registration form
       user = await authRepository.createUser({
         email,
         role: dto.role || 'teacher',
+        firstName: dto.firstName,
+        lastName: dto.lastName,
+        // For school accounts: prefer schoolName; contactName is the admin's name
+        schoolName: dto.schoolName,
       });
+    } else if (purpose === 'signup' && dto.role && dto.role !== user.role) {
+      // User already exists but re-registering with a different role — update role + names
+      user = await authRepository.updateUserRole(email, dto.role, {
+        firstName: dto.firstName,
+        lastName: dto.lastName,
+        schoolName: dto.schoolName,
+      }) ?? user;
     }
 
     // 6. Reset failed attempts + update lastLoginAt
@@ -148,10 +159,12 @@ class AuthService {
    */
   private mapToAuthUserDTO(user: any) {
     return {
-      _id: user._id.toString(),
+      userId: user._id.toString(),
       email: user.email,
-      name: user.name,
       role: user.role,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      schoolName: user.schoolName,
       isEmailVerified: user.isEmailVerified,
       isProfileComplete: user.isProfileComplete,
       profileStep: user.profileStep,
@@ -180,14 +193,11 @@ class AuthService {
     const hash = hashToken(refreshToken);
     const session = await authRepository.findSession(hash);
 
-    if (!session) {
-      // Token not in DB — possible reuse attack. Revoke ALL sessions for this user.
-      await authRepository.revokeAllSessions(payload.userId);
-      throw new Error('Potential security issue detected: Refresh token reuse detected. All your sessions have been revoked for security. Please login again.');
-    }
-
-    if (session.isRevoked) {
-      throw new Error('Your session has been revoked. Please login again.');
+    if (!session || session.isRevoked) {
+      // Token not found or already rotated — most likely a double-request race
+      // (e.g. React Strict Mode, network retry, or tab race). Reject this request
+      // without nuking all sessions so the user's other valid sessions survive.
+      throw new Error('Session not found or already rotated. Please login again.');
     }
 
     // 3. Revoke old session

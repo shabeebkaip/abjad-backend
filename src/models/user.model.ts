@@ -5,6 +5,9 @@ export interface IUser {
   _id?: string;
   uuid: string;
   name?: string;
+  firstName?: string;
+  lastName?: string;
+  schoolName?: string;
   email: string;
   phone?: string;
   password?: string;
@@ -30,6 +33,9 @@ export interface IUser {
 export interface IUserDocument extends Document {
   uuid: string;
   name?: string;
+  firstName?: string;
+  lastName?: string;
+  schoolName?: string;
   email: string;
   phone?: string;
   password?: string;
@@ -73,6 +79,9 @@ const userSchema = new Schema<UserDocument>(
       default: () => uuidv4(),
     },
     name: { type: String, trim: true },
+    firstName: { type: String, trim: true },
+    lastName: { type: String, trim: true },
+    schoolName: { type: String, trim: true },
     email: {
       type: String,
       required: true,

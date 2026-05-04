@@ -34,11 +34,17 @@ class AuthRepository {
   async createUser(data: {
     email: string;
     role: 'teacher' | 'school' | 'admin';
+    firstName?: string;
+    lastName?: string;
+    schoolName?: string;
     language?: string;
   }) {
     const user = new User({
       email: data.email.toLowerCase(),
       role: data.role || 'teacher',
+      firstName: data.firstName,
+      lastName: data.lastName,
+      schoolName: data.schoolName,
       language: data.language || 'ar',
       status: 'active',
       isPhoneVerified: false,
@@ -52,6 +58,21 @@ class AuthRepository {
       deviceTokens: [],
     });
     return user.save();
+  }
+
+  /**
+   * Update a user's role (e.g. when re-registering with a different role)
+   */
+  async updateUserRole(
+    email: string,
+    role: 'teacher' | 'school' | 'admin',
+    nameFields?: { firstName?: string; lastName?: string; schoolName?: string },
+  ) {
+    return User.findOneAndUpdate(
+      { email: email.toLowerCase() },
+      { role, ...nameFields },
+      { new: true }
+    );
   }
 
   /**
