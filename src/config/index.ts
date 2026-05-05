@@ -31,7 +31,7 @@ export const config = {
     refreshTokenName: 'refreshToken',
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict' as const,
+    sameSite: (process.env.NODE_ENV === 'production' ? 'none' : 'lax') as 'none' | 'lax',
     maxAge: 30 * 24 * 60 * 60 * 1000, // 30d in ms
   },
   
@@ -40,11 +40,9 @@ export const config = {
     url: process.env.REDIS_URL || 'redis://localhost:6379',
   },
   
-  // CORS — supports comma-separated origins in CLIENT_URL env var
+  // CORS — allow all origins for now
   cors: {
-    origin: process.env.CLIENT_URL
-      ? process.env.CLIENT_URL.split(',').map((o) => o.trim())
-      : ['http://localhost:3000', 'http://localhost:3001'],
+    origin: true,
   },
   
   // File Upload
