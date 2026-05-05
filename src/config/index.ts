@@ -40,7 +40,12 @@ export const config = {
     url: process.env.REDIS_URL || 'redis://localhost:6379',
   },
   
-  // CORS — allow all origins for now
+  // TODO: [BEFORE PRODUCTION] Restrict CORS to specific origins using CLIENT_URL env var.
+  // Replace `origin: true` with:
+  //   origin: process.env.CLIENT_URL
+  //     ? process.env.CLIENT_URL.split(',').map((o) => o.trim())
+  //     : ['http://localhost:3000'],
+  // And set CLIENT_URL=https://abjad-frontend.vercel.app in Vercel backend env vars.
   cors: {
     origin: true,
   },
@@ -64,5 +69,6 @@ export const config = {
     port: parseInt(process.env.EMAIL_PORT || '587'),
     user: process.env.EMAIL_USER,
     password: process.env.EMAIL_PASSWORD,
+    from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
   },
 };

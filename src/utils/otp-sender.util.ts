@@ -34,7 +34,7 @@ export const sendOtpEmail = async (email: string, otp: string): Promise<void> =>
 
   try {
     await getTransporter().sendMail({
-      from: `"Abjad Platform" <${config.email.user}>`,
+      from: `"Abjad Platform" <${config.email.from}>`,
       to: email,
       subject: 'Your Abjad Verification Code',
       text: `Your OTP code is: ${otp}. It expires in ${config.otp.expiryMinutes} minutes.`,
