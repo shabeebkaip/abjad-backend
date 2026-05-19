@@ -1,13 +1,25 @@
-import { jobsRepository, JobFilters } from './jobs.repository';
+import { jobsRepository, JobFilters, JobWithScore } from './jobs.repository';
 import { IJob } from '../../models/job.model';
 import { teacherProfileRepository } from '../teacher-profile/teacher-profile.repository';
-import { IProfessionalInfo, ILocationPreferences } from '../../models/teacher-profile.model';
 import { AppError } from '../../utils/app-error.util';
 
 export class JobsService {
-  async listJobs(filters: JobFilters): Promise<{ jobs: IJob[]; total: number; page: number; totalPages: number }> {
-    const page = filters.page ?? 1;
+  async listJobs(
+    filters: JobFilters,
+    teacherId?: string,
+  ): Promise<{ jobs: (IJob | JobWithScore)[]; total: number; page: number; totalPages: number }> {
+    const page  = filters.page  ?? 1;
     const limit = filters.limit ?? 20;
+
+    // If a teacher is authenticated, attach match scores
+    if (teacherId) {
+      const profile = await teacherProfileRepository.findByUserId(teacherId);
+      if (profile) {
+        const { jobs, total } = await jobsRepository.findActiveScored(filters, profile);
+        return { jobs, total, page, totalPages: Math.ceil(total / limit) };
+      }
+    }
+
     const { jobs, total } = await jobsRepository.findActive(filters);
     return { jobs, total, page, totalPages: Math.ceil(total / limit) };
   }
@@ -23,18 +35,10 @@ export class JobsService {
     return { job, isSaved };
   }
 
-  async getRecommendations(teacherId: string): Promise<IJob[]> {
+  async getRecommendations(teacherId: string): Promise<JobWithScore[]> {
     const profile = await teacherProfileRepository.findByUserId(teacherId);
     if (!profile) return [];
-
-    const prof = profile.professional as IProfessionalInfo;
-    const loc = profile.locationPreferences as ILocationPreferences;
-
-    const subjects = prof?.subjects ?? [];
-    const gradeLevels = prof?.gradeLevels ?? [];
-    const cities = (loc?.preferredCities as string[]) ?? [];
-
-    return jobsRepository.findRecommended(subjects, gradeLevels, cities, 10);
+    return jobsRepository.findRecommended(profile, 10);
   }
 
   async saveJob(teacherId: string, jobId: string): Promise<void> {

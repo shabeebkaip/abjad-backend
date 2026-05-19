@@ -3,6 +3,9 @@ import { IOffer } from '../../models/offer.model';
 import { Application } from '../../models/application.model';
 import { AppError } from '../../utils/app-error.util';
 import mongoose from 'mongoose';
+import User from '../../models/user.model';
+import { sendEmail } from '../../utils/email.util';
+import { tplOfferReceived, tplHiredConfirmation } from '../../utils/email-templates.util';
 
 export class SchoolOffersService {
   async extendOffer(schoolId: string, data: CreateOfferData): Promise<IOffer> {
@@ -26,6 +29,25 @@ export class SchoolOffersService {
         $push: { statusHistory: { status: 'offer_extended', timestamp: new Date() } },
       }
     );
+
+    // Fire-and-forget email to teacher
+    void (async () => {
+      const [teacherUser, schoolUser] = await Promise.all([
+        User.findById(app.teacherId).select('email emailNotificationsEnabled firstName').lean(),
+        User.findById(schoolId).select('schoolName').lean(),
+      ]);
+      if (!teacherUser?.emailNotificationsEnabled || !teacherUser.email) return;
+      const { subject, html } = tplOfferReceived({
+        teacherName: (teacherUser as any).firstName ?? 'there',
+        position: offer.position,
+        schoolName: (schoolUser as any)?.schoolName ?? 'the school',
+        salary: offer.salary,
+        deadline: offer.deadline,
+        startDate: offer.startDate,
+        contractDuration: offer.contractDuration,
+      });
+      await sendEmail(teacherUser.email, subject, html);
+    })();
 
     return offer;
   }
@@ -81,6 +103,22 @@ export class SchoolOffersService {
         $push: { statusHistory: { status: 'hired', timestamp: new Date() } },
       }
     );
+
+    // Fire-and-forget hired confirmation email to teacher
+    void (async () => {
+      const [teacherUser, schoolUser] = await Promise.all([
+        User.findById(offer.teacherId).select('email emailNotificationsEnabled firstName').lean(),
+        User.findById(schoolId).select('schoolName').lean(),
+      ]);
+      if (!teacherUser?.emailNotificationsEnabled || !teacherUser.email) return;
+      const { subject, html } = tplHiredConfirmation({
+        teacherName: (teacherUser as any).firstName ?? 'there',
+        position: offer.position,
+        schoolName: (schoolUser as any)?.schoolName ?? 'the school',
+        startDate: offer.startDate,
+      });
+      await sendEmail(teacherUser.email, subject, html);
+    })();
 
     return offer;
   }

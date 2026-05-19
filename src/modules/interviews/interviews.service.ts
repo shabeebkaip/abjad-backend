@@ -1,6 +1,11 @@
 import { interviewsRepository } from './interviews.repository';
 import { IInterview, InterviewStatus } from '../../models/interview.model';
 import { AppError } from '../../utils/app-error.util';
+import User from '../../models/user.model';
+import { Job } from '../../models/job.model';
+import TeacherProfile from '../../models/teacher-profile.model';
+import { sendEmail } from '../../utils/email.util';
+import { tplInterviewResponseToSchool } from '../../utils/email-templates.util';
 
 export class InterviewsService {
   async listInterviews(teacherId: string, status?: InterviewStatus, page = 1, limit = 20) {
@@ -26,6 +31,27 @@ export class InterviewsService {
     if (!interview) {
       throw AppError.badRequest('Interview not found or cannot be responded to');
     }
+
+    // Fire-and-forget email to school
+    void (async () => {
+      const [schoolUser, job, teacherProfile] = await Promise.all([
+        User.findById(interview.schoolId).select('email emailNotificationsEnabled').lean(),
+        Job.findById(interview.jobId).select('title').lean(),
+        TeacherProfile.findOne({ userId: teacherId }).select('personal').lean(),
+      ]);
+      if (!schoolUser?.emailNotificationsEnabled || !schoolUser.email) return;
+      const teacherName = (teacherProfile as any)?.personal?.fullNameEn ?? (teacherProfile as any)?.personal?.fullNameAr ?? 'The teacher';
+      const { subject, html } = tplInterviewResponseToSchool({
+        schoolName: '',
+        teacherName,
+        jobTitle: (job as any)?.title ?? 'the position',
+        action,
+        reason,
+        proposedTime,
+      });
+      await sendEmail(schoolUser.email, subject, html);
+    })();
+
     return interview;
   }
 

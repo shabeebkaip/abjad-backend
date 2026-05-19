@@ -3,6 +3,10 @@ import { jobsRepository } from '../jobs/jobs.repository';
 import { teacherProfileRepository } from '../teacher-profile/teacher-profile.repository';
 import { IApplication, ApplicationStatus } from '../../models/application.model';
 import { AppError } from '../../utils/app-error.util';
+import { matchingService } from '../matching/matching.service';
+import User from '../../models/user.model';
+import { sendEmail } from '../../utils/email.util';
+import { tplApplicationSubmitted, tplNewApplicationToSchool } from '../../utils/email-templates.util';
 
 export class ApplicationsService {
   async apply(teacherId: string, jobId: string, coverLetter?: string): Promise<IApplication> {
@@ -20,9 +24,14 @@ export class ApplicationsService {
 
     const profile = await teacherProfileRepository.findByUserId(teacherId);
     if (!profile) throw AppError.badRequest('Complete your profile before applying');
-    if (profile.profileStatus !== 'approved') {
-      throw AppError.forbidden('Your profile must be approved before applying');
+    if (profile.profileStatus === 'suspended') {
+      throw AppError.forbidden('Your account has been suspended. Please contact support.');
     }
+    if (profile.profileStatus === 'rejected') {
+      throw AppError.forbidden('Your profile has been rejected. Please update your profile and resubmit.');
+    }
+
+    const { score: matchScore } = matchingService.compute(profile, job);
 
     const application = await applicationsRepository.create({
       jobId,
@@ -30,9 +39,38 @@ export class ApplicationsService {
       teacherProfileId: (profile._id as { toString(): string }).toString(),
       schoolId: job.schoolId.toString(),
       coverLetter,
+      matchScore,
     });
 
     await applicationsRepository.incrementJobApplicationsCount(jobId);
+
+    // Fire-and-forget emails
+    void (async () => {
+      const [teacherUser, schoolUser] = await Promise.all([
+        User.findById(teacherId).select('email emailNotificationsEnabled firstName').lean(),
+        User.findById(job.schoolId).select('email emailNotificationsEnabled schoolName').lean(),
+      ]);
+      const teacherName = profile.personal?.fullNameEn ?? profile.personal?.fullNameAr ?? 'Teacher';
+      if (teacherUser?.emailNotificationsEnabled) {
+        const { subject, html } = tplApplicationSubmitted({
+          teacherName,
+          jobTitle: job.title,
+          schoolName: schoolUser?.schoolName ?? 'the school',
+          referenceNumber: application.referenceNumber,
+        });
+        await sendEmail(teacherUser.email, subject, html);
+      }
+      if (schoolUser?.emailNotificationsEnabled) {
+        const { subject, html } = tplNewApplicationToSchool({
+          schoolName: schoolUser.schoolName ?? 'School',
+          teacherName,
+          jobTitle: job.title,
+          matchScore: application.matchScore,
+          referenceNumber: application.referenceNumber,
+        });
+        await sendEmail(schoolUser.email, subject, html);
+      }
+    })();
 
     return application;
   }

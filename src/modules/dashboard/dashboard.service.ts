@@ -5,7 +5,6 @@ import { Interview } from '../../models/interview.model';
 import { Offer } from '../../models/offer.model';
 import { Notification } from '../../models/notification.model';
 import { jobsRepository } from '../jobs/jobs.repository';
-import { IProfessionalInfo, ILocationPreferences } from '../../models/teacher-profile.model';
 
 export class DashboardService {
   async getTeacherDashboard(teacherId: string) {
@@ -60,18 +59,10 @@ export class DashboardService {
       appStats.total += s.count as number;
     }
 
-    // Get recommendations based on profile
-    let recommendations: Awaited<ReturnType<typeof jobsRepository.findRecommended>> = [];
-    if (profile) {
-      const prof = profile.professional as IProfessionalInfo;
-      const loc = profile.locationPreferences as ILocationPreferences;
-      recommendations = await jobsRepository.findRecommended(
-        prof?.subjects ?? [],
-        prof?.gradeLevels ?? [],
-        (loc?.preferredCities as string[]) ?? [],
-        5
-      );
-    }
+    // Get scored recommendations based on full profile
+    const recommendations = profile
+      ? await jobsRepository.findRecommended(profile, 5)
+      : [];
 
     // Profile completion suggestions
     const suggestions: string[] = [];

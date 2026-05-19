@@ -1,6 +1,11 @@
 import { schoolApplicationsRepository, SchoolAppFilters } from './school-applications.repository';
 import { IApplication } from '../../models/application.model';
 import { AppError } from '../../utils/app-error.util';
+import User from '../../models/user.model';
+import { Job } from '../../models/job.model';
+import TeacherProfile from '../../models/teacher-profile.model';
+import { sendEmail } from '../../utils/email.util';
+import { tplApplicationStatusChanged } from '../../utils/email-templates.util';
 
 const VALID_SCHOOL_TRANSITIONS: Record<string, string[]> = {
   submitted: ['reviewing', 'rejected'],
@@ -52,6 +57,27 @@ export class SchoolApplicationsService {
 
     const updated = await schoolApplicationsRepository.updateStatus(appId, schoolId, status, meta);
     if (!updated) throw AppError.notFound('Application not found');
+
+    // Fire-and-forget email to teacher
+    void (async () => {
+      const [teacherUser, job, teacherProfile, schoolUser] = await Promise.all([
+        User.findById(app.teacherId).select('email emailNotificationsEnabled').lean(),
+        Job.findById(app.jobId).select('title').lean(),
+        TeacherProfile.findOne({ userId: app.teacherId }).select('personal').lean(),
+        User.findById(schoolId).select('schoolName').lean(),
+      ]);
+      if (!teacherUser?.emailNotificationsEnabled || !teacherUser.email) return;
+      const teacherName = (teacherProfile as any)?.personal?.fullNameEn ?? (teacherProfile as any)?.personal?.fullNameAr ?? 'Teacher';
+      const { subject, html } = tplApplicationStatusChanged({
+        teacherName,
+        jobTitle: (job as any)?.title ?? 'the position',
+        schoolName: (schoolUser as any)?.schoolName ?? 'the school',
+        status,
+        rejectionReason: meta.rejectionReason,
+      });
+      await sendEmail(teacherUser.email, subject, html);
+    })();
+
     return updated;
   }
 

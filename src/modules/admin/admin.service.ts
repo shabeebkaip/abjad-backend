@@ -1,7 +1,71 @@
+import bcrypt from 'bcrypt';
 import { adminRepository } from './admin.repository';
 import { AppError } from '../../utils/app-error.util';
+import { signAccessToken, signRefreshToken, hashToken, JwtPayload } from '../../utils/jwt.util';
+import authRepository from '../auth/auth.repository';
+import User from '../../models/user.model';
+import { sendEmail } from '../../utils/email.util';
+import { tplProfileApproved, tplProfileRejected, tplSchoolVerified, tplSchoolRejected } from '../../utils/email-templates.util';
+import TeacherProfile from '../../models/teacher-profile.model';
+import SchoolProfile from '../../models/school-profile.model';
 
 export class AdminService {
+  // ── Admin Login ───────────────────────────────────────────
+
+  async login(email: string, password: string): Promise<{ user: object; accessToken: string }> {
+    // @ts-ignore
+    const User = (await import('../../models/user.model')).default;
+
+    // Fetch with password field (select: false by default)
+    const user = await User.findOne({ email: email.toLowerCase() }).select('+password');
+    if (!user) throw AppError.unauthorized('Invalid email or password');
+    if (user.role !== 'admin') throw AppError.forbidden('Access denied — admin account required');
+    if (user.status !== 'active') throw AppError.forbidden('Account is not active');
+
+    if (user.lockedUntil && user.lockedUntil > new Date()) {
+      const mins = Math.ceil((user.lockedUntil.getTime() - Date.now()) / 60000);
+      throw AppError.tooManyRequests(`Account locked. Try again in ${mins} minutes.`);
+    }
+
+    if (!user.password) throw AppError.unauthorized('Invalid email or password');
+
+    const match = await bcrypt.compare(password, user.password);
+    if (!match) {
+      await authRepository.incrementFailedLogins(email);
+      throw AppError.unauthorized('Invalid email or password');
+    }
+
+    await authRepository.resetFailedLogins(email);
+    await authRepository.updateLastLogin(user._id!.toString());
+
+    const payload: JwtPayload = {
+      userId: user._id!.toString(),
+      role: user.role,
+      email: user.email,
+    };
+    const accessToken = signAccessToken(payload);
+    const refreshToken = signRefreshToken(payload);
+
+    await authRepository.createSession({
+      userId: user._id!.toString(),
+      refreshTokenHash: hashToken(refreshToken),
+      deviceInfo: {},
+      ipAddress: 'admin',
+      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+    });
+
+    return {
+      user: {
+        userId: user._id!.toString(),
+        email: user.email,
+        role: user.role,
+        name: user.name ?? user.firstName ?? 'Admin',
+      },
+      accessToken,
+    };
+  }
+
+
   // ── Stats ─────────────────────────────────────────────────
 
   async getDashboardStats() {
@@ -24,14 +88,34 @@ export class AdminService {
     const school = await adminRepository.getSchoolById(profileId);
     if (!school) throw AppError.notFound('School profile not found');
     if (school.profileStatus === 'verified') throw AppError.badRequest('School is already verified');
-    return adminRepository.approveSchool(profileId, adminNotes);
+    const updated = await adminRepository.approveSchool(profileId, adminNotes);
+
+    void (async () => {
+      const user = await User.findById(school.userId).select('email emailNotificationsEnabled').lean();
+      if (!user?.emailNotificationsEnabled || !user.email) return;
+      const schoolName = school.nameEn ?? school.nameAr ?? 'Your school';
+      const { subject, html } = tplSchoolVerified({ schoolName });
+      await sendEmail(user.email, subject, html);
+    })();
+
+    return updated;
   }
 
   async rejectSchool(profileId: string, rejectionReason: string, adminNotes?: string) {
     if (!rejectionReason?.trim()) throw AppError.badRequest('Rejection reason is required');
     const school = await adminRepository.getSchoolById(profileId);
     if (!school) throw AppError.notFound('School profile not found');
-    return adminRepository.rejectSchool(profileId, rejectionReason, adminNotes);
+    const updated = await adminRepository.rejectSchool(profileId, rejectionReason, adminNotes);
+
+    void (async () => {
+      const user = await User.findById(school.userId).select('email emailNotificationsEnabled').lean();
+      if (!user?.emailNotificationsEnabled || !user.email) return;
+      const schoolName = school.nameEn ?? school.nameAr ?? 'Your school';
+      const { subject, html } = tplSchoolRejected({ schoolName, reason: rejectionReason });
+      await sendEmail(user.email, subject, html);
+    })();
+
+    return updated;
   }
 
   // ── Teachers ──────────────────────────────────────────────
@@ -50,14 +134,137 @@ export class AdminService {
     const teacher = await adminRepository.getTeacherById(profileId);
     if (!teacher) throw AppError.notFound('Teacher profile not found');
     if (teacher.profileStatus === 'approved') throw AppError.badRequest('Teacher is already approved');
-    return adminRepository.approveTeacher(profileId, adminNotes);
+    const updated = await adminRepository.approveTeacher(profileId, adminNotes);
+
+    void (async () => {
+      const user = await User.findById(teacher.userId).select('email emailNotificationsEnabled').lean();
+      if (!user?.emailNotificationsEnabled || !user.email) return;
+      const teacherName = teacher.personal?.fullNameEn ?? teacher.personal?.fullNameAr ?? 'Teacher';
+      const { subject, html } = tplProfileApproved({ teacherName });
+      await sendEmail(user.email, subject, html);
+    })();
+
+    return updated;
   }
 
   async rejectTeacher(profileId: string, rejectionReason: string, adminNotes?: string) {
     if (!rejectionReason?.trim()) throw AppError.badRequest('Rejection reason is required');
     const teacher = await adminRepository.getTeacherById(profileId);
     if (!teacher) throw AppError.notFound('Teacher profile not found');
-    return adminRepository.rejectTeacher(profileId, rejectionReason, adminNotes);
+    const updated = await adminRepository.rejectTeacher(profileId, rejectionReason, adminNotes);
+
+    void (async () => {
+      const user = await User.findById(teacher.userId).select('email emailNotificationsEnabled').lean();
+      if (!user?.emailNotificationsEnabled || !user.email) return;
+      const teacherName = teacher.personal?.fullNameEn ?? teacher.personal?.fullNameAr ?? 'Teacher';
+      const { subject, html } = tplProfileRejected({ teacherName, reason: rejectionReason });
+      await sendEmail(user.email, subject, html);
+    })();
+
+    return updated;
+  }
+
+  // ── Interviews ──────────────────────────────────────────
+
+  async listAllInterviews(status?: string, period?: 'upcoming' | 'past' | 'all', page = 1, limit = 50) {
+    return adminRepository.listAllInterviews({ status, period, page, limit });
+  }
+
+  // ── Applications ────────────────────────────────────────
+
+  async listAllApplications(status?: string, page = 1, limit = 30) {
+    return adminRepository.listAllApplications({ status, page, limit });
+  }
+
+  // ── Activity ─────────────────────────────────────────────
+
+  async getTeacherActivity(profileId: string) {
+    const profile = await adminRepository.getTeacherById(profileId);
+    if (!profile) throw AppError.notFound('Teacher profile not found');
+    return adminRepository.getTeacherActivity(profile.userId.toString());
+  }
+
+  async getSchoolActivity(profileId: string) {
+    const school = await adminRepository.getSchoolById(profileId);
+    if (!school) throw AppError.notFound('School profile not found');
+    return adminRepository.getSchoolActivity(school.userId.toString());
+  }
+
+  // ── Deletion ─────────────────────────────────────────────
+
+  async deleteTeacher(profileId: string) {
+    const profile = await TeacherProfile.findById(profileId);
+    if (!profile) throw AppError.notFound('Teacher profile not found');
+    await Promise.all([
+      TeacherProfile.findByIdAndDelete(profileId),
+      profile.userId ? User.findByIdAndDelete(profile.userId) : Promise.resolve(),
+    ]);
+  }
+
+  async deleteSchool(profileId: string) {
+    const profile = await SchoolProfile.findById(profileId);
+    if (!profile) throw AppError.notFound('School profile not found');
+    await Promise.all([
+      SchoolProfile.findByIdAndDelete(profileId),
+      profile.userId ? User.findByIdAndDelete(profile.userId) : Promise.resolve(),
+    ]);
+  }
+
+  // ── Support Tickets ──────────────────────────────────────
+
+  async listAllTickets(status?: string, priority?: string, page = 1, limit = 20) {
+    return adminRepository.listAllTickets({ status, priority, page, limit });
+  }
+
+  async getTicket(ticketId: string) {
+    const ticket = await adminRepository.getTicketById(ticketId);
+    if (!ticket) throw AppError.notFound('Ticket not found');
+    return ticket;
+  }
+
+  async replyToTicket(ticketId: string, adminId: string, content: string) {
+    if (!content?.trim()) throw AppError.badRequest('Reply content is required');
+    const ticket = await adminRepository.adminReplyToTicket(ticketId, adminId, content);
+    if (!ticket) throw AppError.notFound('Ticket not found');
+    return ticket;
+  }
+
+  async updateTicketStatus(ticketId: string, status: string) {
+    const validStatuses = ['open', 'in_progress', 'resolved', 'closed'] as const;
+    if (!validStatuses.includes(status as typeof validStatuses[number])) {
+      throw AppError.badRequest('Invalid status');
+    }
+    const ticket = await adminRepository.updateTicketStatus(ticketId, status as typeof validStatuses[number]);
+    if (!ticket) throw AppError.notFound('Ticket not found');
+    return ticket;
+  }
+
+  // ── Jobs (Content Moderation) ────────────────────────────
+
+  async listAllJobs(status?: string, page = 1, limit = 20) {
+    return adminRepository.listAllJobs({ status, page, limit });
+  }
+
+  async updateJobStatus(jobId: string, status: string) {
+    const validStatuses = ['active', 'closed', 'expired'] as const;
+    if (!validStatuses.includes(status as typeof validStatuses[number])) {
+      throw AppError.badRequest('Invalid status');
+    }
+    const job = await adminRepository.updateJobStatus(jobId, status);
+    if (!job) throw AppError.notFound('Job not found');
+    return job;
+  }
+
+  // ── Enhanced Stats ───────────────────────────────────────
+
+  async getEnhancedStats() {
+    return adminRepository.getEnhancedStats();
+  }
+
+  // ── Report Generation ────────────────────────────────────
+
+  async generateReport(type: string, dateRange: string) {
+    return adminRepository.generateReport(type, dateRange);
   }
 }
 

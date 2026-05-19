@@ -2,6 +2,10 @@ import mongoose from 'mongoose';
 import { Job, IJob } from '../../models/job.model';
 import { SavedJob } from '../../models/saved-job.model';
 import SchoolProfile from '../../models/school-profile.model';
+import { ITeacherProfileDocument } from '../../models/teacher-profile.model';
+import { matchingService } from '../matching/matching.service';
+
+export type JobWithScore = IJob & { matchScore?: number };
 
 export interface JobFilters {
   city?: string | string[];
@@ -102,22 +106,59 @@ export class JobsRepository {
     await Job.updateOne({ _id: new mongoose.Types.ObjectId(jobId) }, { $inc: { viewsCount: 1 } });
   }
 
+  /**
+   * Find and score recommended jobs for a teacher.
+   * Phase 1: broad MongoDB pre-filter (subjects OR grades OR city).
+   * Phase 2: compute full weighted match score for each candidate.
+   * Returns jobs sorted by match score descending.
+   */
   async findRecommended(
-    subjects: string[],
-    gradeLevels: string[],
-    cities: string[],
-    limit = 10
-  ): Promise<IJob[]> {
+    profile: ITeacherProfileDocument,
+    limit = 10,
+  ): Promise<JobWithScore[]> {
+    const prof = profile.professional as { subjects?: string[]; gradeLevels?: string[] };
+    const loc  = profile.locationPreferences as { preferredCities?: string[] };
+
+    const subjects    = prof?.subjects     ?? [];
+    const gradeLevels = prof?.gradeLevels  ?? [];
+    const cities      = (loc?.preferredCities as string[]) ?? [];
+
+    // Broad pre-filter: at least one matching signal
     const orConditions: Record<string, unknown>[] = [];
-    if (subjects.length) orConditions.push({ subjects: { $in: subjects } });
+    if (subjects.length)    orConditions.push({ subjects:    { $in: subjects    } });
     if (gradeLevels.length) orConditions.push({ gradeLevels: { $in: gradeLevels } });
-    if (cities.length) orConditions.push({ city: { $in: cities } });
+    if (cities.length)      orConditions.push({ city:        { $in: cities      } });
 
     const query: Record<string, unknown> = { status: 'active' };
     if (orConditions.length) query.$or = orConditions;
 
-    const rawJobs = await Job.find(query).sort({ createdAt: -1 }).limit(limit).lean() as IJob[];
-    return attachSchoolInfo(rawJobs);
+    // Fetch up to 60 candidates so scoring has enough to rank from
+    const rawJobs = await Job.find(query).sort({ createdAt: -1 }).limit(60).lean() as IJob[];
+    const enriched = await attachSchoolInfo(rawJobs);
+
+    // Score every candidate and sort
+    const scored = enriched
+      .map((job) => ({ ...job, matchScore: matchingService.compute(profile, job).score }))
+      .sort((a, b) => (b.matchScore ?? 0) - (a.matchScore ?? 0))
+      .slice(0, limit) as unknown as JobWithScore[];
+
+    return scored;
+  }
+
+  /**
+   * Same as findActive but attaches a matchScore to each job when a teacher
+   * profile is provided. Used by the public job-listing endpoint with optional auth.
+   */
+  async findActiveScored(
+    filters: JobFilters,
+    profile: ITeacherProfileDocument,
+  ): Promise<{ jobs: JobWithScore[]; total: number }> {
+    const { jobs, total } = await this.findActive(filters);
+    const scored = jobs.map((job) => ({
+      ...job,
+      matchScore: matchingService.compute(profile, job).score,
+    })) as unknown as JobWithScore[];
+    return { jobs: scored, total };
   }
 
   // Saved jobs

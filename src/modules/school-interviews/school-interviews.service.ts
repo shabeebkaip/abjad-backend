@@ -3,6 +3,10 @@ import { IInterview } from '../../models/interview.model';
 import { Application } from '../../models/application.model';
 import { AppError } from '../../utils/app-error.util';
 import mongoose from 'mongoose';
+import User from '../../models/user.model';
+import { Job } from '../../models/job.model';
+import { sendEmail } from '../../utils/email.util';
+import { tplInterviewInvitation } from '../../utils/email-templates.util';
 
 export class SchoolInterviewsService {
   async scheduleInterview(schoolId: string, data: ScheduleInterviewData): Promise<IInterview> {
@@ -26,6 +30,29 @@ export class SchoolInterviewsService {
         $push: { statusHistory: { status: 'interview_scheduled', timestamp: new Date() } },
       }
     );
+
+    // Fire-and-forget email to teacher
+    void (async () => {
+      const [teacherUser, job, schoolUser] = await Promise.all([
+        User.findById(app.teacherId).select('email emailNotificationsEnabled').lean(),
+        Job.findById(app.jobId).select('title').lean(),
+        User.findById(schoolId).select('schoolName').lean(),
+      ]);
+      if (!teacherUser?.emailNotificationsEnabled || !teacherUser.email) return;
+      const { subject, html } = tplInterviewInvitation({
+        teacherName: 'there',
+        jobTitle: (job as any)?.title ?? 'the position',
+        schoolName: (schoolUser as any)?.schoolName ?? 'the school',
+        scheduledAt: interview.scheduledAt,
+        type: interview.type,
+        duration: interview.duration,
+        location: interview.location,
+        meetingLink: interview.meetingLink,
+        instructions: interview.instructions,
+        responseDeadline: interview.responseDeadline,
+      });
+      await sendEmail(teacherUser.email, subject, html);
+    })();
 
     return interview;
   }

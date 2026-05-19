@@ -16,20 +16,23 @@ export class JobsController {
         return Array.isArray(v) ? (v as string[]) : [v as string];
       };
 
-      const result = await jobsService.listJobs({
-        city: city as string | string[],
-        subjects: toArray(subjects),
-        gradeLevels: toArray(gradeLevels),
-        languageRequirement: languageRequirement as string,
-        experienceRequired: experienceRequired as string,
-        employmentType: employmentType as string,
-        salaryMin: salaryMin ? Number(salaryMin) : undefined,
-        salaryMax: salaryMax ? Number(salaryMax) : undefined,
-        postedWithin: postedWithin ? Number(postedWithin) : undefined,
-        sortBy: sortBy as 'newest' | 'deadline' | 'salary_asc' | 'salary_desc',
-        page: page ? Number(page) : 1,
-        limit: limit ? Number(limit) : 20,
-      });
+      const result = await jobsService.listJobs(
+        {
+          city: city as string | string[],
+          subjects: toArray(subjects),
+          gradeLevels: toArray(gradeLevels),
+          languageRequirement: languageRequirement as string,
+          experienceRequired: experienceRequired as string,
+          employmentType: employmentType as string,
+          salaryMin: salaryMin ? Number(salaryMin) : undefined,
+          salaryMax: salaryMax ? Number(salaryMax) : undefined,
+          postedWithin: postedWithin ? Number(postedWithin) : undefined,
+          sortBy: sortBy as 'newest' | 'deadline' | 'salary_asc' | 'salary_desc',
+          page: page ? Number(page) : 1,
+          limit: limit ? Number(limit) : 20,
+        },
+        req.user?.userId, // attach match scores when teacher is authenticated
+      );
 
       res.json({ success: true, data: result });
     } catch (err) {

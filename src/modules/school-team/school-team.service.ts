@@ -1,6 +1,9 @@
 import { schoolTeamRepository } from './school-team.repository';
 import { ISchoolTeamMemberDocument, SchoolTeamRole } from '../../models/school-team.model';
 import { AppError } from '../../utils/app-error.util';
+import User from '../../models/user.model';
+import { sendEmail } from '../../utils/email.util';
+import { tplTeamInvitation } from '../../utils/email-templates.util';
 
 export class SchoolTeamService {
   async addMember(
@@ -11,13 +14,31 @@ export class SchoolTeamService {
     const existing = await schoolTeamRepository.findByEmailAndSchool(data.email, schoolId);
     if (existing) throw AppError.conflict('This person is already a team member');
 
-    return schoolTeamRepository.create({
+    const member = await schoolTeamRepository.create({
       schoolId,
       email: data.email,
       name: data.name,
       role: data.role,
       invitedBy,
     });
+
+    // Fire-and-forget invitation email
+    void (async () => {
+      const [schoolUser, inviter] = await Promise.all([
+        User.findById(schoolId).select('schoolName').lean(),
+        User.findById(invitedBy).select('firstName name').lean(),
+      ]);
+      const inviterName = (inviter as any)?.firstName ?? (inviter as any)?.name ?? undefined;
+      const { subject, html } = tplTeamInvitation({
+        inviteeName: data.name,
+        schoolName: (schoolUser as any)?.schoolName ?? 'the school',
+        role: data.role,
+        invitedByName: inviterName,
+      });
+      await sendEmail(data.email, subject, html);
+    })();
+
+    return member;
   }
 
   async listMembers(schoolId: string): Promise<ISchoolTeamMemberDocument[]> {

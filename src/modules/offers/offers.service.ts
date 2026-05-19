@@ -1,6 +1,10 @@
 import { offersRepository } from './offers.repository';
 import { IOffer, OfferStatus } from '../../models/offer.model';
 import { AppError } from '../../utils/app-error.util';
+import User from '../../models/user.model';
+import TeacherProfile from '../../models/teacher-profile.model';
+import { sendEmail } from '../../utils/email.util';
+import { tplOfferResponseToSchool } from '../../utils/email-templates.util';
 
 export class OffersService {
   async listOffers(teacherId: string, status?: OfferStatus, page = 1, limit = 20) {
@@ -41,6 +45,26 @@ export class OffersService {
 
     const updated = await offersRepository.respond(offerId, teacherId, action, reason, counterSalary, message);
     if (!updated) throw AppError.badRequest('Cannot respond to this offer');
+
+    // Fire-and-forget email to school
+    void (async () => {
+      const [schoolUser, teacherProfile] = await Promise.all([
+        User.findById(offer.schoolId).select('email emailNotificationsEnabled').lean(),
+        TeacherProfile.findOne({ userId: teacherId }).select('personal').lean(),
+      ]);
+      if (!schoolUser?.emailNotificationsEnabled || !schoolUser.email) return;
+      const teacherName = (teacherProfile as any)?.personal?.fullNameEn ?? (teacherProfile as any)?.personal?.fullNameAr ?? 'The teacher';
+      const { subject, html } = tplOfferResponseToSchool({
+        schoolName: '',
+        teacherName,
+        position: offer.position,
+        action,
+        reason: reason ?? message,
+        counterSalary,
+      });
+      await sendEmail(schoolUser.email, subject, html);
+    })();
+
     return updated;
   }
 }
