@@ -196,6 +196,16 @@ export class JobsRepository {
     return { jobs, total };
   }
 
+  // Bulk lookup — returns the set of jobIds the teacher has saved.
+  // Used by listJobs to flag isSaved on each result so the bookmark icon
+  // renders correctly in the listing UI.
+  async getSavedJobIds(teacherId: string): Promise<Set<string>> {
+    const docs = await SavedJob.find({
+      teacherId: new mongoose.Types.ObjectId(teacherId),
+    }).select('jobId').lean();
+    return new Set(docs.map((d) => d.jobId.toString()));
+  }
+
   async isSaved(teacherId: string, jobId: string): Promise<boolean> {
     const doc = await SavedJob.exists({
       teacherId: new mongoose.Types.ObjectId(teacherId),

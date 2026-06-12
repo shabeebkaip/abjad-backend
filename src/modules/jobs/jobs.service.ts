@@ -7,17 +7,30 @@ export class JobsService {
   async listJobs(
     filters: JobFilters,
     teacherId?: string,
-  ): Promise<{ jobs: (IJob | JobWithScore)[]; total: number; page: number; totalPages: number }> {
+  ): Promise<{ jobs: Array<IJob | JobWithScore | (JobWithScore & { isSaved: boolean })>; total: number; page: number; totalPages: number }> {
     const page  = filters.page  ?? 1;
     const limit = filters.limit ?? 20;
 
-    // If a teacher is authenticated, attach match scores
+    // If a teacher is authenticated, attach match scores + isSaved flag so
+    // the bookmark icon on each card reflects existing saved state.
     if (teacherId) {
       const profile = await teacherProfileRepository.findByUserId(teacherId);
+      const savedIds = await jobsRepository.getSavedJobIds(teacherId);
+
+      const decorate = <T extends { _id?: unknown }>(j: T): T & { isSaved: boolean } => ({
+        ...j,
+        isSaved: savedIds.has(String(j._id ?? '')),
+      });
+
       if (profile) {
         const { jobs, total } = await jobsRepository.findActiveScored(filters, profile);
-        return { jobs, total, page, totalPages: Math.ceil(total / limit) };
+        const decorated = jobs.map(decorate) as unknown as JobWithScore[];
+        return { jobs: decorated, total, page, totalPages: Math.ceil(total / limit) };
       }
+
+      const { jobs, total } = await jobsRepository.findActive(filters);
+      const decorated = jobs.map(decorate) as unknown as IJob[];
+      return { jobs: decorated, total, page, totalPages: Math.ceil(total / limit) };
     }
 
     const { jobs, total } = await jobsRepository.findActive(filters);
