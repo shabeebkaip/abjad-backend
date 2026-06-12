@@ -59,9 +59,9 @@ export class DashboardService {
       appStats.total += s.count as number;
     }
 
-    // Get scored recommendations based on full profile
+    // SRD 5.1.1 — top 10 scored recommendations with per-criterion breakdown
     const recommendations = profile
-      ? await jobsRepository.findRecommended(profile, 5)
+      ? await jobsRepository.findRecommended(profile, 10)
       : [];
 
     // Profile completion suggestions

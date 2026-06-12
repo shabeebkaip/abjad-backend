@@ -5,7 +5,17 @@ import SchoolProfile from '../../models/school-profile.model';
 import { ITeacherProfileDocument } from '../../models/teacher-profile.model';
 import { matchingService } from '../matching/matching.service';
 
-export type JobWithScore = IJob & { matchScore?: number };
+export type JobWithScore = IJob & {
+  matchScore?: number;
+  matchBreakdown?: {
+    subjects: number;
+    gradeLevels: number;
+    experience: number;
+    location: number;
+    language: number;
+    qualifications: number;
+  };
+};
 
 export interface JobFilters {
   city?: string | string[];
@@ -116,6 +126,10 @@ export class JobsRepository {
     profile: ITeacherProfileDocument,
     limit = 10,
   ): Promise<JobWithScore[]> {
+    // No meaningful matching signals → don't fabricate recommendations.
+    // The dashboard's empty state will prompt the user to complete their profile.
+    if (matchingService.isProfileSparse(profile)) return [];
+
     const prof = profile.professional as { subjects?: string[]; gradeLevels?: string[] };
     const loc  = profile.locationPreferences as { preferredCities?: string[] };
 
@@ -136,9 +150,12 @@ export class JobsRepository {
     const rawJobs = await Job.find(query).sort({ createdAt: -1 }).limit(60).lean() as IJob[];
     const enriched = await attachSchoolInfo(rawJobs);
 
-    // Score every candidate and sort
+    // Score every candidate and sort — include breakdown for "Why this match" UI
     const scored = enriched
-      .map((job) => ({ ...job, matchScore: matchingService.compute(profile, job).score }))
+      .map((job) => {
+        const result = matchingService.compute(profile, job);
+        return { ...job, matchScore: result.score, matchBreakdown: result.breakdown };
+      })
       .sort((a, b) => (b.matchScore ?? 0) - (a.matchScore ?? 0))
       .slice(0, limit) as unknown as JobWithScore[];
 
@@ -154,10 +171,15 @@ export class JobsRepository {
     profile: ITeacherProfileDocument,
   ): Promise<{ jobs: JobWithScore[]; total: number }> {
     const { jobs, total } = await this.findActive(filters);
-    const scored = jobs.map((job) => ({
-      ...job,
-      matchScore: matchingService.compute(profile, job).score,
-    })) as unknown as JobWithScore[];
+    // Skip scoring when the profile is too sparse to differentiate jobs —
+    // displaying the same baseline % on every card is worse than no score.
+    if (matchingService.isProfileSparse(profile)) {
+      return { jobs: jobs as unknown as JobWithScore[], total };
+    }
+    const scored = jobs.map((job) => {
+      const result = matchingService.compute(profile, job);
+      return { ...job, matchScore: result.score, matchBreakdown: result.breakdown };
+    }) as unknown as JobWithScore[];
     return { jobs: scored, total };
   }
 

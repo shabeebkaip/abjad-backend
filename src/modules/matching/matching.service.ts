@@ -60,6 +60,22 @@ const WEIGHTS = {
 
 export class MatchingService {
   /**
+   * Returns true when the teacher's profile lacks the signals needed for a
+   * meaningful match score. With no subjects, grades, cities, or languages,
+   * every job collapses to the same baseline (~36) which is misleading to
+   * surface. Callers should omit matchScore when this is true.
+   */
+  isProfileSparse(profile: ITeacherProfileDocument): boolean {
+    const prof = profile.professional as IProfessionalInfo | undefined;
+    const loc  = profile.locationPreferences as ILocationPreferences | undefined;
+    const subjects = prof?.subjects?.length ?? 0;
+    const grades   = prof?.gradeLevels?.length ?? 0;
+    const cities   = (loc?.preferredCities as string[] | undefined)?.length ?? 0;
+    const langs    = profile.languages?.length ?? 0;
+    return subjects === 0 && grades === 0 && cities === 0 && langs === 0;
+  }
+
+  /**
    * Compute a 0–100 match score between a teacher profile and a job posting.
    * Uses the weighted formula from the product spec.
    */
