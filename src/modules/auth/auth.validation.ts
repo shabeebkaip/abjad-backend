@@ -14,6 +14,7 @@ export const verifyOtpSchema = z.object({
   code: z.string().length(6, 'OTP must be 6 digits').regex(/^\d+$/, 'OTP must contain only digits'),
   purpose: z.enum(['signup', 'login', 'reset']),
   role: z.enum(['teacher', 'school']).optional(),
+  rememberDevice: z.boolean().optional(),
 });
 
 export const refreshTokenSchema = z.object({

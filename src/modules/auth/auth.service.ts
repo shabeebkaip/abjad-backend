@@ -57,8 +57,10 @@ class AuthService {
    * - Persists session in database
    * - Returns tuple: [authResponse, refreshToken] for controller to set cookie
    */
-  async verifyOtp(dto: VerifyOtpDTO): Promise<[AuthResponseDTO, string]> {
+  async verifyOtp(dto: VerifyOtpDTO): Promise<[AuthResponseDTO, string, boolean]> {
     const { email, code, purpose, deviceInfo } = dto;
+    // SRD 2.1.2 — "Remember this device" defaults to true (30d). Unchecked → 1d session.
+    const rememberDevice = dto.rememberDevice !== false;
 
     // 0. Check if ACCOUNT is locked (defensive — should also be blocked in sendOtp)
     let user = await authRepository.findUserByEmail(email);
@@ -125,10 +127,14 @@ class AuthService {
       email,
     };
     const accessToken = signAccessToken(payload);
-    const refreshToken = signRefreshToken(payload);
+    const refreshTokenTtl = rememberDevice ? '30d' : '1d';
+    const refreshToken = signRefreshToken(payload, refreshTokenTtl);
 
     // 8. Persist session (store token hash, not raw token)
-    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
+    const sessionTtlMs = rememberDevice
+      ? 30 * 24 * 60 * 60 * 1000
+      : 24 * 60 * 60 * 1000;
+    const expiresAt = new Date(Date.now() + sessionTtlMs);
     const refreshTokenHash = hashToken(refreshToken);
     await authRepository.createSession({
       userId: user._id!.toString(),
@@ -136,10 +142,11 @@ class AuthService {
       deviceInfo: deviceInfo || {},
       ipAddress: deviceInfo?.ip || 'unknown',
       expiresAt,
+      rememberDevice,
     });
 
-    // Return tuple: [authResponse, refreshToken]
-    // Controller destructures and sets refreshToken as secure cookie
+    // Return tuple: [authResponse, refreshToken, rememberDevice]
+    // Controller uses rememberDevice to decide cookie maxAge (persistent vs session)
     return [
       {
         user: this.mapToAuthUserDTO(user),
@@ -151,6 +158,7 @@ class AuthService {
         nextStep: isNewUser ? 'complete-profile' : undefined,
       },
       refreshToken,
+      rememberDevice,
     ];
   }
 
@@ -180,7 +188,7 @@ class AuthService {
    * - Revokes old session and issues new tokens
    * - Creates new session with new refresh token hash
    */
-  async refreshTokens(refreshToken: string, _deviceInfo?: { userAgent?: string; ip?: string; platform?: string }): Promise<{ accessToken: string; refreshToken: string }> {
+  async refreshTokens(refreshToken: string, _deviceInfo?: { userAgent?: string; ip?: string; platform?: string }): Promise<{ accessToken: string; refreshToken: string; rememberDevice: boolean }> {
     // 1. Verify JWT signature
     let payload: JwtPayload;
     try {
@@ -203,17 +211,21 @@ class AuthService {
     // 3. Revoke old session
     await authRepository.revokeSession(session._id!.toString());
 
-    // 4. Issue new tokens
+    // 4. Issue new tokens — preserve rememberDevice choice from the original session
+    const rememberDevice = session.rememberDevice !== false;
     const newPayload: JwtPayload = {
       userId: payload.userId,
       role: payload.role,
       email: payload.email,
     };
     const newAccessToken = signAccessToken(newPayload);
-    const newRefreshToken = signRefreshToken(newPayload);
+    const newRefreshToken = signRefreshToken(newPayload, rememberDevice ? '30d' : '1d');
 
-    // 5. Create new session
-    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
+    // 5. Create new session — same TTL as original
+    const sessionTtlMs = rememberDevice
+      ? 30 * 24 * 60 * 60 * 1000
+      : 24 * 60 * 60 * 1000;
+    const expiresAt = new Date(Date.now() + sessionTtlMs);
     const newTokenHash = hashToken(newRefreshToken);
     await authRepository.createSession({
       userId: payload.userId,
@@ -221,11 +233,13 @@ class AuthService {
       deviceInfo: session.deviceInfo,
       ipAddress: session.deviceInfo?.ip || session.ipAddress || 'unknown',
       expiresAt,
+      rememberDevice,
     });
 
     return {
       accessToken: newAccessToken,
       refreshToken: newRefreshToken,
+      rememberDevice,
     };
   }
 

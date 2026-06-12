@@ -12,6 +12,7 @@ export interface ISession {
   ipAddress: string;           // Top-level IP address field
   expiresAt: Date;
   isRevoked: boolean;
+  rememberDevice: boolean;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -27,6 +28,7 @@ export interface ISessionDocument extends Document {
   ipAddress: string;
   expiresAt: Date;
   isRevoked: boolean;
+  rememberDevice: boolean;
 }
 
 const sessionSchema = new Schema<ISessionDocument>(
@@ -41,6 +43,7 @@ const sessionSchema = new Schema<ISessionDocument>(
     ipAddress: { type: String, required: true },
     expiresAt: { type: Date, required: true },
     isRevoked: { type: Boolean, default: false },
+    rememberDevice: { type: Boolean, default: true },
   },
   { timestamps: true }
 );

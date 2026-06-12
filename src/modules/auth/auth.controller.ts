@@ -2,7 +2,7 @@
 // HTTP layer for auth — calls service, formats JSON response, calls next(error)
 // Exported as singleton instance
 
-import { Request, Response, NextFunction } from 'express';
+import { Request, Response, NextFunction, CookieOptions } from 'express';
 import authService from './auth.service';
 import authRepository from './auth.repository';
 import { SendOtpDTO, VerifyOtpDTO } from './auth.types';
@@ -34,14 +34,18 @@ class AuthController {
         ...req.body,
         deviceInfo,
       };
-      const [authResponse, refreshToken] = await authService.verifyOtp(data);
+      const [authResponse, refreshToken, rememberDevice] = await authService.verifyOtp(data);
 
-      res.cookie(config.cookie.refreshTokenName, refreshToken, {
+      const cookieOptions: CookieOptions = {
         httpOnly: config.cookie.httpOnly,
         secure: config.cookie.secure,
         sameSite: config.cookie.sameSite,
-        maxAge: config.cookie.maxAge,
-      });
+      };
+      // rememberDevice=true → persistent 30d cookie. false → session cookie (clears on browser close).
+      if (rememberDevice) {
+        cookieOptions.maxAge = config.cookie.maxAge;
+      }
+      res.cookie(config.cookie.refreshTokenName, refreshToken, cookieOptions);
 
       res.status(200).json({
         success: true,
@@ -74,14 +78,18 @@ class AuthController {
         ip: req.ip || req.body?.deviceInfo?.ip,
       };
 
-      const { accessToken, refreshToken: newRefreshToken } = await authService.refreshTokens(refreshToken, deviceInfo);
+      const { accessToken, refreshToken: newRefreshToken, rememberDevice } =
+        await authService.refreshTokens(refreshToken, deviceInfo);
 
-      res.cookie(config.cookie.refreshTokenName, newRefreshToken, {
+      const cookieOptions: CookieOptions = {
         httpOnly: config.cookie.httpOnly,
         secure: config.cookie.secure,
         sameSite: config.cookie.sameSite,
-        maxAge: config.cookie.maxAge,
-      });
+      };
+      if (rememberDevice) {
+        cookieOptions.maxAge = config.cookie.maxAge;
+      }
+      res.cookie(config.cookie.refreshTokenName, newRefreshToken, cookieOptions);
 
       res.status(200).json({
         success: true,

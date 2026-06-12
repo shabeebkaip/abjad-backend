@@ -24,6 +24,7 @@ export interface VerifyOtpDTO {
     ip?: string;
     platform?: string;
   };
+  rememberDevice?: boolean;
 }
 
 export interface RefreshTokenDTO {

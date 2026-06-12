@@ -13,9 +13,9 @@ export const signAccessToken = (payload: JwtPayload): string =>
     expiresIn: config.jwt.accessExpiresIn as string,
   } as jwt.SignOptions);
 
-export const signRefreshToken = (payload: JwtPayload): string =>
+export const signRefreshToken = (payload: JwtPayload, expiresIn?: string): string =>
   jwt.sign(payload, config.jwt.refreshSecret as string, {
-    expiresIn: config.jwt.refreshExpiresIn as string,
+    expiresIn: (expiresIn ?? config.jwt.refreshExpiresIn) as string,
   } as jwt.SignOptions);
 
 export const verifyAccessToken = (token: string): JwtPayload =>

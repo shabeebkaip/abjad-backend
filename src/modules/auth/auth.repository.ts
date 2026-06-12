@@ -186,6 +186,7 @@ class AuthRepository {
     };
     ipAddress: string;
     expiresAt: Date;
+    rememberDevice?: boolean;
   }) {
     const session = new Session({
       userId: data.userId,
@@ -194,6 +195,7 @@ class AuthRepository {
       ipAddress: data.ipAddress,
       expiresAt: data.expiresAt,
       isRevoked: false,
+      rememberDevice: data.rememberDevice ?? true,
     });
     return session.save();
   }
