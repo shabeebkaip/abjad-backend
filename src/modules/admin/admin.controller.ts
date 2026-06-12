@@ -103,6 +103,19 @@ class AdminController {
     } catch (err) { next(err); }
   }
 
+  // GET /admin/teachers/:profileId/history — SRD 2.2.10 version history
+  async getTeacherHistory(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const { page, limit } = req.query;
+      const result = await adminService.getTeacherHistory(
+        req.params['profileId'] as string,
+        page ? Number(page) : 1,
+        limit ? Number(limit) : 20,
+      );
+      res.json({ success: true, data: result });
+    } catch (err) { next(err); }
+  }
+
   // ── Interviews ────────────────────────────────────────────
 
   // GET /admin/interviews

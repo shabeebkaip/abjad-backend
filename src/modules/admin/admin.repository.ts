@@ -90,6 +90,13 @@ export class AdminRepository {
     return TeacherProfile.findById(profileId).lean();
   }
 
+  // Detail-page variant — populates User so admin sees email + identity.
+  async getTeacherByIdWithUser(profileId: string) {
+    return TeacherProfile.findById(profileId)
+      .populate('userId', 'email firstName lastName createdAt')
+      .lean();
+  }
+
   async approveTeacher(profileId: string, adminNotes?: string) {
     return TeacherProfile.findByIdAndUpdate(
       profileId,

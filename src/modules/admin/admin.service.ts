@@ -8,6 +8,7 @@ import { sendEmail } from '../../utils/email.util';
 import { tplProfileApproved, tplProfileRejected, tplSchoolVerified, tplSchoolRejected } from '../../utils/email-templates.util';
 import TeacherProfile from '../../models/teacher-profile.model';
 import SchoolProfile from '../../models/school-profile.model';
+import ProfileChangeLog from '../../models/profile-change-log.model';
 
 export class AdminService {
   // ── Admin Login ───────────────────────────────────────────
@@ -125,7 +126,7 @@ export class AdminService {
   }
 
   async getTeacher(profileId: string) {
-    const teacher = await adminRepository.getTeacherById(profileId);
+    const teacher = await adminRepository.getTeacherByIdWithUser(profileId);
     if (!teacher) throw AppError.notFound('Teacher profile not found');
     return teacher;
   }
@@ -188,6 +189,29 @@ export class AdminService {
     const school = await adminRepository.getSchoolById(profileId);
     if (!school) throw AppError.notFound('School profile not found');
     return adminRepository.getSchoolActivity(school.userId.toString());
+  }
+
+  // SRD 2.2.10 — version history for teacher profile edits
+  async getTeacherHistory(profileId: string, page = 1, limit = 20) {
+    const profile = await adminRepository.getTeacherById(profileId);
+    if (!profile) throw AppError.notFound('Teacher profile not found');
+
+    const skip = (Math.max(1, page) - 1) * limit;
+    const [items, total] = await Promise.all([
+      ProfileChangeLog.find({ teacherProfileId: profile._id })
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      ProfileChangeLog.countDocuments({ teacherProfileId: profile._id }),
+    ]);
+
+    return {
+      items,
+      total,
+      page,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    };
   }
 
   // ── Deletion ─────────────────────────────────────────────

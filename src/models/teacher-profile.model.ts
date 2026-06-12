@@ -60,6 +60,9 @@ export interface IProfessionalInfo {
   gradeLevels: GradeLevel[];
   experienceRange?: ExperienceRange;
   employmentStatus?: EmploymentStatus;
+  // Only meaningful when employmentStatus === 'employed' (SRD 2.2.2).
+  // Days of notice the teacher must give their current employer.
+  noticePeriodDays?: number;
 }
 
 export interface IEducation {
@@ -183,6 +186,11 @@ const professionalInfoSchema = new Schema<IProfessionalInfo>(
     employmentStatus: {
       type: String,
       enum: ['employed', 'unemployed', 'freelance'],
+    },
+    noticePeriodDays: {
+      type: Number,
+      min: 0,
+      max: 180,
     },
   },
   { _id: false },

@@ -25,6 +25,7 @@ router.get('/teachers/:profileId', adminController.getTeacher.bind(adminControll
 router.post('/teachers/:profileId/approve', adminController.approveTeacher.bind(adminController));
 router.post('/teachers/:profileId/reject', adminController.rejectTeacher.bind(adminController));
 router.get('/teachers/:profileId/activity', adminController.getTeacherActivity.bind(adminController));
+router.get('/teachers/:profileId/history', adminController.getTeacherHistory.bind(adminController));
 router.delete('/teachers/:profileId', adminController.deleteTeacher.bind(adminController));
 
 // School activity + deletion
