@@ -194,7 +194,7 @@ class AuthService {
     try {
       payload = verifyRefreshToken(refreshToken);
     } catch (error) {
-      throw new Error('Refresh token is invalid or expired. Please login again.');
+      throw AppError.unauthorized('Refresh token is invalid or expired. Please login again.');
     }
 
     // 2. Find session by hash
@@ -205,7 +205,7 @@ class AuthService {
       // Token not found or already rotated — most likely a double-request race
       // (e.g. React Strict Mode, network retry, or tab race). Reject this request
       // without nuking all sessions so the user's other valid sessions survive.
-      throw new Error('Session not found or already rotated. Please login again.');
+      throw AppError.unauthorized('Session not found or already rotated. Please login again.');
     }
 
     // 3. Revoke old session
