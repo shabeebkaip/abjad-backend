@@ -1,26 +1,30 @@
 import { jobsRepository, JobFilters, JobWithScore } from './jobs.repository';
 import { IJob } from '../../models/job.model';
 import { teacherProfileRepository } from '../teacher-profile/teacher-profile.repository';
+import { applicationsRepository } from '../applications/applications.repository';
 import { AppError } from '../../utils/app-error.util';
 
 export class JobsService {
   async listJobs(
     filters: JobFilters,
     teacherId?: string,
-  ): Promise<{ jobs: Array<IJob | JobWithScore | (JobWithScore & { isSaved: boolean })>; total: number; page: number; totalPages: number }> {
+  ): Promise<{ jobs: Array<IJob | JobWithScore | (JobWithScore & { isSaved: boolean; isApplied: boolean })>; total: number; page: number; totalPages: number }> {
     const page  = filters.page  ?? 1;
     const limit = filters.limit ?? 20;
 
-    // If a teacher is authenticated, attach match scores + isSaved flag so
-    // the bookmark icon on each card reflects existing saved state.
+    // If a teacher is authenticated, attach match scores + isSaved + isApplied
+    // flags so the bookmark icon and "Applied" label render correctly.
     if (teacherId) {
-      const profile = await teacherProfileRepository.findByUserId(teacherId);
-      const savedIds = await jobsRepository.getSavedJobIds(teacherId);
+      const [profile, savedIds, appliedIds] = await Promise.all([
+        teacherProfileRepository.findByUserId(teacherId),
+        jobsRepository.getSavedJobIds(teacherId),
+        applicationsRepository.getAppliedJobIds(teacherId),
+      ]);
 
-      const decorate = <T extends { _id?: unknown }>(j: T): T & { isSaved: boolean } => ({
-        ...j,
-        isSaved: savedIds.has(String(j._id ?? '')),
-      });
+      const decorate = <T extends { _id?: unknown }>(j: T): T & { isSaved: boolean; isApplied: boolean } => {
+        const id = String(j._id ?? '');
+        return { ...j, isSaved: savedIds.has(id), isApplied: appliedIds.has(id) };
+      };
 
       if (profile) {
         const { jobs, total } = await jobsRepository.findActiveScored(filters, profile);

@@ -55,6 +55,17 @@ export class ApplicationsRepository {
       .populate('schoolId', 'name email');
   }
 
+  // Bulk lookup — returns the set of jobIds the teacher has applied to (any
+  // non-withdrawn application). Used by listJobs to flag isApplied on each
+  // result so the listing UI can show "Applied" or hide the apply button.
+  async getAppliedJobIds(teacherId: string): Promise<Set<string>> {
+    const docs = await Application.find({
+      teacherId: new mongoose.Types.ObjectId(teacherId),
+      status: { $ne: 'withdrawn' },
+    }).select('jobId').lean();
+    return new Set(docs.map((d) => (d as { jobId: { toString(): string } }).jobId.toString()));
+  }
+
   async findByTeacherAndJob(teacherId: string, jobId: string): Promise<IApplication | null> {
     return Application.findOne({
       teacherId: new mongoose.Types.ObjectId(teacherId),
@@ -133,6 +144,32 @@ export class ApplicationsRepository {
     ]);
     if (!total) return 0;
     return Math.round((responded / total) * 100);
+  }
+
+  // SRD 2.5.4 — average hours from "submitted" to the first school-side response
+  // (reviewing/shortlisted/interview_scheduled/offer_extended/hired/rejected).
+  // Withdrawn entries don't count as responses. Returns null when no apps have
+  // been responded to yet, so the UI can show "—" instead of "0h".
+  async getAvgResponseHours(teacherId: string): Promise<number | null> {
+    const RESPONDED_STATUSES = ['reviewing','shortlisted','interview_scheduled','offer_extended','hired','rejected'];
+    const docs = await Application.find({
+      teacherId: new mongoose.Types.ObjectId(teacherId),
+      status: { $in: RESPONDED_STATUSES },
+    }).select('statusHistory').lean();
+
+    const diffs: number[] = [];
+    for (const doc of docs) {
+      const history = ((doc as { statusHistory?: Array<{ status: string; timestamp: Date }> }).statusHistory) ?? [];
+      const submittedAt = history.find((h) => h.status === 'submitted')?.timestamp;
+      const firstResponse = history.find((h) => RESPONDED_STATUSES.includes(h.status))?.timestamp;
+      if (submittedAt && firstResponse) {
+        const ms = new Date(firstResponse).getTime() - new Date(submittedAt).getTime();
+        if (ms >= 0) diffs.push(ms / 3_600_000);
+      }
+    }
+
+    if (diffs.length === 0) return null;
+    return Math.round(diffs.reduce((a, b) => a + b, 0) / diffs.length);
   }
 
   async incrementJobApplicationsCount(jobId: string): Promise<void> {
