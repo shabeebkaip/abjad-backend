@@ -100,11 +100,14 @@ export class ApplicationsService {
   }
 
   async getStats(teacherId: string) {
-    const [stats, responseRate] = await Promise.all([
+    const [stats, responseRate, avgResponseHours] = await Promise.all([
       applicationsRepository.getStats(teacherId),
       applicationsRepository.getResponseRate(teacherId),
+      applicationsRepository.getAvgResponseHours(teacherId),
     ]);
-    return { ...stats, responseRate };
+    // SRD 2.5.4 — % of all applications that ended in 'hired'
+    const successRate = stats.total > 0 ? Math.round((stats.hired / stats.total) * 100) : 0;
+    return { ...stats, responseRate, avgResponseHours, successRate };
   }
 }
 
