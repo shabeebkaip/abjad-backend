@@ -14,6 +14,7 @@ router.get('/preferences', notificationsController.getPreferences.bind(notificat
 router.patch('/preferences', notificationsController.updatePreferences.bind(notificationsController));
 router.patch('/read-all', notificationsController.markAllRead.bind(notificationsController));
 router.patch('/:notificationId/read', notificationsController.markRead.bind(notificationsController));
+router.patch('/:notificationId/unread', notificationsController.markUnread.bind(notificationsController));
 router.delete('/:notificationId', notificationsController.delete.bind(notificationsController));
 
 export default router;

@@ -23,11 +23,20 @@ export class NotificationsRepository {
     type?: NotificationType,
     unreadOnly?: boolean,
     page = 1,
-    limit = 20
+    limit = 20,
+    search?: string,
   ): Promise<{ notifications: INotification[]; total: number; unreadCount: number }> {
     const query: Record<string, unknown> = { userId: new mongoose.Types.ObjectId(userId) };
     if (type) query.type = type;
     if (unreadOnly) query.isRead = false;
+
+    // SRD 2.8.3 — case-insensitive substring search across title + body
+    const trimmed = search?.trim();
+    if (trimmed) {
+      const escaped = trimmed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const regex = new RegExp(escaped, 'i');
+      query.$or = [{ title: regex }, { body: regex }];
+    }
 
     const skip = (page - 1) * limit;
     const [notifications, total, unreadCount] = await Promise.all([
@@ -43,6 +52,14 @@ export class NotificationsRepository {
     await Notification.updateOne(
       { _id: new mongoose.Types.ObjectId(notificationId), userId: new mongoose.Types.ObjectId(userId) },
       { $set: { isRead: true, readAt: new Date() } }
+    );
+  }
+
+  // SRD 2.8.3 — flip a notification back to unread
+  async markUnread(notificationId: string, userId: string): Promise<void> {
+    await Notification.updateOne(
+      { _id: new mongoose.Types.ObjectId(notificationId), userId: new mongoose.Types.ObjectId(userId) },
+      { $set: { isRead: false }, $unset: { readAt: 1 } },
     );
   }
 

@@ -31,14 +31,20 @@ export class NotificationsService {
     type?: NotificationType,
     unreadOnly?: boolean,
     page = 1,
-    limit = 20
+    limit = 20,
+    search?: string,
   ) {
-    const result = await notificationsRepository.findByUser(userId, type, unreadOnly, page, limit);
+    const result = await notificationsRepository.findByUser(userId, type, unreadOnly, page, limit, search);
     return { ...result, page, totalPages: Math.ceil(result.total / limit) };
   }
 
   async markRead(userId: string, notificationId: string): Promise<void> {
     await notificationsRepository.markRead(notificationId, userId);
+  }
+
+  // SRD 2.8.3 — toggle a notification back to unread
+  async markUnread(userId: string, notificationId: string): Promise<void> {
+    await notificationsRepository.markUnread(notificationId, userId);
   }
 
   async markAllRead(userId: string): Promise<void> {

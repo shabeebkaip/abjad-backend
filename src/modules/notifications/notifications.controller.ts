@@ -10,7 +10,8 @@ export class NotificationsController {
       const unreadOnly = req.query.unreadOnly === 'true';
       const page = req.query.page ? Number(req.query.page) : 1;
       const limit = req.query.limit ? Number(req.query.limit) : 20;
-      const result = await notificationsService.listNotifications(req.user!.userId, type, unreadOnly, page, limit);
+      const search = typeof req.query.search === 'string' ? req.query.search : undefined;
+      const result = await notificationsService.listNotifications(req.user!.userId, type, unreadOnly, page, limit, search);
       res.json({ success: true, data: result });
     } catch (err) {
       next(err);
@@ -21,6 +22,16 @@ export class NotificationsController {
     try {
       await notificationsService.markRead(req.user!.userId, String(req.params.notificationId));
       res.json({ success: true, message: 'Marked as read' });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  // SRD 2.8.3 — toggle a notification back to unread
+  async markUnread(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      await notificationsService.markUnread(req.user!.userId, String(req.params.notificationId));
+      res.json({ success: true, message: 'Marked as unread' });
     } catch (err) {
       next(err);
     }
