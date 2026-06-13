@@ -405,6 +405,61 @@ export function tplSchoolRejected(opts: {
   };
 }
 
+// SRD 2.9.3 — support ticket created (24h response SLA)
+export function tplTicketReceived(opts: {
+  recipientName: string;
+  ticketNumber: string;
+  subject: string;
+  category: string;
+  priority: string;
+  responseDueAt: Date;
+}): { subject: string; html: string } {
+  const categoryLabel: Record<string, string> = {
+    technical: 'Technical',
+    profile_application: 'Profile / Applications',
+    payment: 'Payment',
+    report: 'Report',
+    general: 'General',
+    other: 'Other',
+  };
+  return {
+    subject: `Support ticket received – ${opts.ticketNumber}`,
+    html: layout('Support Ticket Received', `
+      ${heading('We\'ve received your support request')}
+      ${para(`Hi ${opts.recipientName}, thanks for reaching out. Our team will respond within <strong>24 hours</strong>. You can follow the conversation in the support centre any time.`)}
+      ${infoBox([
+        ['Ticket', opts.ticketNumber],
+        ['Subject', opts.subject],
+        ['Category', categoryLabel[opts.category] ?? opts.category],
+        ['Priority', opts.priority.charAt(0).toUpperCase() + opts.priority.slice(1)],
+        ['Response by', opts.responseDueAt.toLocaleString('en-SA', { dateStyle: 'medium', timeStyle: 'short' })],
+      ])}
+      ${ctaButton('View Ticket', `${BASE_URL}/support`)}
+    `),
+  };
+}
+
+// SRD 2.9.3 — admin posted a reply on the ticket
+export function tplTicketReplied(opts: {
+  recipientName: string;
+  ticketNumber: string;
+  subject: string;
+  excerpt: string;
+}): { subject: string; html: string } {
+  const safeExcerpt = opts.excerpt.length > 220 ? opts.excerpt.slice(0, 220).trimEnd() + '…' : opts.excerpt;
+  return {
+    subject: `New reply on your support ticket – ${opts.ticketNumber}`,
+    html: layout('New Support Reply', `
+      ${heading('You have a new reply')}
+      ${para(`Hi ${opts.recipientName}, the Abjad support team has replied to your ticket <strong>${opts.subject}</strong>.`)}
+      <div style="background:#f8fafc;border-left:3px solid #00ACD3;border-radius:8px;padding:14px 16px;margin:16px 0;">
+        <p style="margin:0;font-size:13px;color:#475569;line-height:1.55;">${safeExcerpt.replace(/\n/g, '<br>')}</p>
+      </div>
+      ${ctaButton('View Conversation', `${BASE_URL}/support`)}
+    `),
+  };
+}
+
 export function tplTeamInvitation(opts: {
   inviteeName: string;
   schoolName: string;

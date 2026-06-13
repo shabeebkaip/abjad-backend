@@ -33,6 +33,9 @@ export interface ISupportTicket extends Document {
   assignedTo?: mongoose.Types.ObjectId;
   resolvedAt?: Date;
   closedAt?: Date;
+  // SRD 2.9.3 — 24h response SLA
+  responseDueAt?: Date;       // createdAt + 24h, stamped on creation
+  firstResponseAt?: Date;     // set when an admin posts the first reply
   createdAt: Date;
   updatedAt: Date;
 }
@@ -63,6 +66,8 @@ const supportTicketSchema = new Schema<ISupportTicket>(
     assignedTo: { type: Schema.Types.ObjectId, ref: 'User' },
     resolvedAt: { type: Date },
     closedAt: { type: Date },
+    responseDueAt: { type: Date, index: true },
+    firstResponseAt: { type: Date },
   },
   { timestamps: true }
 );

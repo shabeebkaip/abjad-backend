@@ -12,6 +12,9 @@ export class SupportRepository {
     attachments?: { url: string; name: string }[];
   }): Promise<ISupportTicket> {
     const ticketNumber = `TKT-${Date.now()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+    // SRD 2.9.3 — 24-hour response SLA. Stamped at creation so the SLA window
+    // doesn't shift if the ticket is later edited.
+    const responseDueAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
     return SupportTicket.create({
       ticketNumber,
       userId: new mongoose.Types.ObjectId(data.userId),
@@ -21,6 +24,7 @@ export class SupportRepository {
       description: data.description,
       attachments: data.attachments ?? [],
       priority: data.category === 'technical' ? 'high' : 'medium',
+      responseDueAt,
     });
   }
 
@@ -53,6 +57,15 @@ export class SupportRepository {
     content: string,
     attachments: { url: string; name: string }[] = []
   ): Promise<ISupportTicket | null> {
+    const $set: Record<string, unknown> = { status: 'in_progress' };
+    // SRD 2.9.3 — when an admin posts the FIRST reply, stamp firstResponseAt
+    // so we can compute SLA hit/miss without scanning the whole message list.
+    if (userRole === 'admin') {
+      const existing = await SupportTicket.findById(ticketId).select('firstResponseAt').lean();
+      if (existing && !(existing as { firstResponseAt?: Date }).firstResponseAt) {
+        $set.firstResponseAt = new Date();
+      }
+    }
     return SupportTicket.findByIdAndUpdate(
       ticketId,
       {
@@ -65,7 +78,7 @@ export class SupportRepository {
             timestamp: new Date(),
           },
         },
-        $set: { status: 'in_progress' },
+        $set,
       },
       { new: true }
     );
