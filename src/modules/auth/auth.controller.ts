@@ -116,6 +116,7 @@ class AuthController {
         httpOnly: true,
         secure: config.cookie.secure,
         sameSite: config.cookie.sameSite,
+        path: config.cookie.path,
       });
 
       res.status(200).json({ 
@@ -140,6 +141,7 @@ class AuthController {
         httpOnly: true,
         secure: config.cookie.secure,
         sameSite: config.cookie.sameSite,
+        path: config.cookie.path,
       });
 
       res.status(200).json({ success: true, message: 'Logged out from all devices' });
@@ -150,31 +152,50 @@ class AuthController {
 
   async me(req: Request, res: Response, next: NextFunction) {
     try {
-      // JWT payload is always present (verified by authenticate middleware)
       const jwtUser = (req as any).user as { userId: string; email: string; role: string };
 
-      // Fetch full user from DB to get name fields — fall back to JWT-only if DB call fails
-      let dbUser: any = null;
-      try {
-        dbUser = await authRepository.findUserById(jwtUser.userId);
-      } catch {
-        // DB failure — continue with JWT data only
+      const dbUser = await authRepository.findUserById(jwtUser.userId);
+
+      // Strict mode — if the User row is gone but the JWT is still valid,
+      // the session is effectively orphaned. Clear the cookie and return 401
+      // so the client logs the user out cleanly instead of silently rendering
+      // an empty page with the "Me" fallback.
+      if (!dbUser) {
+        res.clearCookie(config.cookie.refreshTokenName, {
+          httpOnly: true,
+          secure: config.cookie.secure,
+          sameSite: config.cookie.sameSite,
+          path: config.cookie.path,
+        });
+        res.status(401).json({ success: false, message: 'User account no longer exists. Please sign in again.' });
+        return;
+      }
+
+      if (dbUser.status && dbUser.status !== 'active') {
+        res.clearCookie(config.cookie.refreshTokenName, {
+          httpOnly: true,
+          secure: config.cookie.secure,
+          sameSite: config.cookie.sameSite,
+          path: config.cookie.path,
+        });
+        res.status(403).json({ success: false, message: `Account is ${dbUser.status}.` });
+        return;
       }
 
       res.status(200).json({
         success: true,
         message: 'User profile retrieved successfully',
         data: {
-          userId: jwtUser.userId,
-          email: dbUser?.email ?? jwtUser.email,
-          role: dbUser?.role ?? jwtUser.role,
-          firstName: dbUser?.firstName,
-          lastName: dbUser?.lastName,
-          schoolName: dbUser?.schoolName,
-          isEmailVerified: dbUser?.isEmailVerified ?? true,
-          isProfileComplete: dbUser?.isProfileComplete ?? false,
-          profileStep: dbUser?.profileStep ?? 'basic',
-          language: dbUser?.language ?? 'ar',
+          userId: dbUser._id!.toString(),
+          email: dbUser.email,
+          role: dbUser.role,
+          firstName: dbUser.firstName,
+          lastName: dbUser.lastName,
+          schoolName: dbUser.schoolName,
+          isEmailVerified: dbUser.isEmailVerified ?? true,
+          isProfileComplete: dbUser.isProfileComplete ?? false,
+          profileStep: dbUser.profileStep ?? 'basic',
+          language: dbUser.language ?? 'ar',
         },
       });
     } catch (error) {

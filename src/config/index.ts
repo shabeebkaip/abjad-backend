@@ -26,13 +26,18 @@ export const config = {
     maxAttempts: 3,
   },
 
-  // Cookie
+  // Session cookie — standard naming with optional __Host- prefix in
+  // production. __Host- forces Secure + Path=/ + no Domain (RFC 6265bis),
+  // which is the strictest configuration for an httpOnly session cookie.
+  // In dev we can't use it (browsers require Secure, which won't ship over
+  // plain http://localhost).
   cookie: {
-    refreshTokenName: 'refreshToken',
+    refreshTokenName: process.env.NODE_ENV === 'production' ? '__Host-abjad_session' : 'abjad_session',
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: (process.env.NODE_ENV === 'production' ? 'none' : 'lax') as 'none' | 'lax',
-    maxAge: 30 * 24 * 60 * 60 * 1000, // 30d in ms
+    path: '/',
+    maxAge: 30 * 24 * 60 * 60 * 1000, // 30d in ms (only applied when remembered)
   },
   
   // Redis

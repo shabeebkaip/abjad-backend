@@ -208,6 +208,20 @@ class AuthService {
       throw AppError.unauthorized('Session not found or already rotated. Please login again.');
     }
 
+    // 2b. Validate the user still exists and is active. JWT signature alone
+    // isn't enough — the User row can have been deleted or suspended since
+    // the token was minted.
+    const user = await authRepository.findUserById(payload.userId);
+    if (!user) {
+      // Orphaned session — revoke it so the next request fails fast.
+      await authRepository.revokeSession(session._id!.toString());
+      throw AppError.unauthorized('User account no longer exists. Please sign in again.');
+    }
+    if (user.status && user.status !== 'active') {
+      await authRepository.revokeSession(session._id!.toString());
+      throw AppError.forbidden(`Account is ${user.status}.`);
+    }
+
     // 3. Revoke old session
     await authRepository.revokeSession(session._id!.toString());
 
