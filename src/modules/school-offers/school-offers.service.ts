@@ -6,6 +6,7 @@ import mongoose from 'mongoose';
 import User from '../../models/user.model';
 import { sendEmail } from '../../utils/email.util';
 import { tplOfferReceived, tplHiredConfirmation } from '../../utils/email-templates.util';
+import { uploadToCloudinary, deleteFromCloudinary } from '../../utils/cloudinary.util';
 
 export class SchoolOffersService {
   async extendOffer(schoolId: string, data: CreateOfferData): Promise<IOffer> {
@@ -95,6 +96,11 @@ export class SchoolOffersService {
     if (!offer) throw AppError.notFound('Offer not found');
     if (offer.status !== 'accepted') throw AppError.badRequest('Offer must be accepted by teacher first');
 
+    // SRD 2.7.3 — stamp hireConfirmedAt on the offer so the teacher download
+    // UI can show "Hired on …" and so analytics has a single source of truth
+    // for the hire timestamp.
+    const updatedOffer = await schoolOffersRepository.confirmHire(offerId, schoolId);
+
     // Update application to hired
     await Application.updateOne(
       { _id: offer.applicationId },
@@ -120,7 +126,26 @@ export class SchoolOffersService {
       await sendEmail(teacherUser.email, subject, html);
     })();
 
-    return offer;
+    return updatedOffer ?? offer;
+  }
+
+  // SRD 2.7.3 — school uploads the finalized signed contract document. Teacher
+  // can then download it from their applications view.
+  async uploadContract(schoolId: string, offerId: string, buffer: Buffer): Promise<IOffer> {
+    const offer = await schoolOffersRepository.findByIdAndSchool(offerId, schoolId);
+    if (!offer) throw AppError.notFound('Offer not found');
+    if (offer.status !== 'accepted') throw AppError.badRequest('Offer must be accepted before uploading a contract');
+
+    // If there's already a contract on this offer, drop the old file from
+    // Cloudinary to avoid orphaned uploads.
+    if (offer.contractKey) {
+      await deleteFromCloudinary(offer.contractKey, 'raw').catch(() => {});
+    }
+
+    const result = await uploadToCloudinary(buffer, 'contracts');
+    const updated = await schoolOffersRepository.setContract(offerId, schoolId, result.secureUrl, result.publicId);
+    if (!updated) throw AppError.notFound('Offer not found');
+    return updated;
   }
 }
 

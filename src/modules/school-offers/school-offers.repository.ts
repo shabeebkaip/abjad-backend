@@ -122,13 +122,30 @@ export class SchoolOffersRepository {
   }
 
   async confirmHire(offerId: string, schoolId: string): Promise<IOffer | null> {
+    // SRD 2.7.3 — status stays accepted (application gets bumped to hired
+    // separately), but we now timestamp the hire confirmation so the teacher
+    // UI can show "Hired on …".
     return Offer.findOneAndUpdate(
       {
         _id: new mongoose.Types.ObjectId(offerId),
         schoolId: new mongoose.Types.ObjectId(schoolId),
         status: 'accepted',
       },
-      { $set: { status: 'accepted' } }, // status stays accepted; application gets updated to hired
+      { $set: { hireConfirmedAt: new Date() } },
+      { new: true }
+    );
+  }
+
+  // SRD 2.7.3 — school uploads the finalized/signed contract document. Only
+  // allowed once the teacher has accepted the offer.
+  async setContract(offerId: string, schoolId: string, contractUrl: string, contractKey: string): Promise<IOffer | null> {
+    return Offer.findOneAndUpdate(
+      {
+        _id: new mongoose.Types.ObjectId(offerId),
+        schoolId: new mongoose.Types.ObjectId(schoolId),
+        status: 'accepted',
+      },
+      { $set: { contractUrl, contractKey } },
       { new: true }
     );
   }

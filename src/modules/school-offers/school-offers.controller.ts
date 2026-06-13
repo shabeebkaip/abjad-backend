@@ -79,6 +79,24 @@ export class SchoolOffersController {
       next(err);
     }
   }
+
+  // SRD 2.7.3 — POST /api/school/offers/:offerId/contract (multipart "file")
+  async uploadContract(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      if (!req.file) {
+        res.status(400).json({ success: false, message: 'Contract file is required' });
+        return;
+      }
+      const offer = await schoolOffersService.uploadContract(
+        req.user!.userId,
+        String(req.params.offerId),
+        req.file.buffer,
+      );
+      res.json({ success: true, data: offer, message: 'Contract uploaded' });
+    } catch (err) {
+      next(err);
+    }
+  }
 }
 
 export const schoolOffersController = new SchoolOffersController();

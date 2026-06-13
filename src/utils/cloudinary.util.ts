@@ -7,7 +7,7 @@ cloudinary.config({
   api_secret: config.cloudinary.apiSecret,
 });
 
-export type UploadFolder = 'photos' | 'certificates' | 'resumes' | 'documents' | 'school-logos' | 'school-documents';
+export type UploadFolder = 'photos' | 'certificates' | 'resumes' | 'documents' | 'school-logos' | 'school-documents' | 'contracts';
 
 export interface CloudinaryUploadResult {
   url: string;

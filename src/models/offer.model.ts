@@ -30,6 +30,13 @@ export interface IOffer extends Document {
   deadline: Date;
   status: OfferStatus;
   offerLetterUrl?: string;
+  // SRD 2.7.3 — final signed contract uploaded by the school after teacher
+  // acceptance. Distinct from offerLetterUrl (which carries the original
+  // proposed terms). Falls back to offerLetterUrl on the teacher download UI
+  // if no separate contract has been uploaded.
+  contractUrl?: string;
+  contractKey?: string;       // cloud storage key for deletion
+  hireConfirmedAt?: Date;     // when the school clicked "Confirm hire"
   teacherResponse?: ITeacherOfferResponse;
   negotiationHistory: INegotiationEntry[];
   viewedAt?: Date;
@@ -57,6 +64,9 @@ const offerSchema = new Schema<IOffer>(
       index: true,
     },
     offerLetterUrl: { type: String },
+    contractUrl: { type: String },
+    contractKey: { type: String },
+    hireConfirmedAt: { type: Date },
     teacherResponse: {
       action: { type: String, enum: ['accepted','declined','negotiate'] },
       reason: { type: String },
