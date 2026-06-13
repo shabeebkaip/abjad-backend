@@ -23,11 +23,27 @@ export interface IUser {
   loginCount: number;
   pushNotificationsEnabled: boolean;
   emailNotificationsEnabled: boolean;
+  // SRD 2.8.2 — extra channel toggles + per-type opt-out map
+  soundEnabled: boolean;
+  notificationPreferences: INotificationPreferences;
   deviceTokens: string[];
   language: 'ar' | 'en';
   suspensionReason?: string;
   createdAt?: Date;
   updatedAt?: Date;
+}
+
+// SRD 2.8.2 — per-type opt-out for each of the 8 notification kinds.
+// Default true (opt-in) so existing behaviour is unchanged.
+export interface INotificationPreferences {
+  job_match: boolean;
+  application_status: boolean;
+  interview_invitation: boolean;
+  interview_reminder: boolean;
+  offer_received: boolean;
+  message: boolean;
+  profile_status: boolean;
+  system: boolean;
 }
 
 export interface IUserDocument extends Document {
@@ -51,6 +67,8 @@ export interface IUserDocument extends Document {
   loginCount: number;
   pushNotificationsEnabled: boolean;
   emailNotificationsEnabled: boolean;
+  soundEnabled: boolean;
+  notificationPreferences: INotificationPreferences;
   deviceTokens: string[];
   language: 'ar' | 'en';
   suspensionReason?: string;
@@ -120,6 +138,17 @@ const userSchema = new Schema<UserDocument>(
     loginCount: { type: Number, default: 0 },
     pushNotificationsEnabled: { type: Boolean, default: true },
     emailNotificationsEnabled: { type: Boolean, default: true },
+    soundEnabled: { type: Boolean, default: true },
+    notificationPreferences: {
+      job_match:            { type: Boolean, default: true },
+      application_status:   { type: Boolean, default: true },
+      interview_invitation: { type: Boolean, default: true },
+      interview_reminder:   { type: Boolean, default: true },
+      offer_received:       { type: Boolean, default: true },
+      message:              { type: Boolean, default: true },
+      profile_status:       { type: Boolean, default: true },
+      system:               { type: Boolean, default: true },
+    },
     deviceTokens: [{ type: String }],
     language: { type: String, enum: ["ar", "en"], default: "ar" },
     suspensionReason: { type: String, trim: true },

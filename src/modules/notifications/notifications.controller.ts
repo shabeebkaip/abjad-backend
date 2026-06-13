@@ -52,6 +52,26 @@ export class NotificationsController {
       next(err);
     }
   }
+
+  // SRD 2.8.2 — GET /api/notifications/preferences
+  async getPreferences(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const prefs = await notificationsService.getPreferences(req.user!.userId);
+      res.json({ success: true, data: prefs });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  // SRD 2.8.2 — PATCH /api/notifications/preferences
+  async updatePreferences(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const prefs = await notificationsService.updatePreferences(req.user!.userId, req.body);
+      res.json({ success: true, data: prefs, message: 'Preferences updated' });
+    } catch (err) {
+      next(err);
+    }
+  }
 }
 
 export const notificationsController = new NotificationsController();
