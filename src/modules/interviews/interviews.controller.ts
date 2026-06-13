@@ -58,6 +58,25 @@ export class InterviewsController {
       next(err);
     }
   }
+
+  // SRD 2.6.4 — teacher submits post-interview feedback (rating + optional comment)
+  async submitFeedback(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { rating, comment } = req.body as { rating?: number; comment?: string };
+      if (rating == null) {
+        res.status(400).json({ success: false, message: 'Rating is required' });
+        return;
+      }
+      const interview = await interviewsService.submitTeacherFeedback(
+        req.user!.userId,
+        String(req.params.interviewId),
+        { rating: Number(rating), comment },
+      );
+      res.json({ success: true, data: interview });
+    } catch (err) {
+      next(err);
+    }
+  }
 }
 
 export const interviewsController = new InterviewsController();

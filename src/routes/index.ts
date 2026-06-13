@@ -19,6 +19,7 @@ import schoolOffersRoutes from '../modules/school-offers/school-offers.routes';
 import schoolDashboardRoutes from '../modules/school-dashboard/school-dashboard.routes';
 import schoolTeamRoutes from '../modules/school-team/school-team.routes';
 import adminRoutes from '../modules/admin/admin.routes';
+import internalRoutes from '../modules/internal/internal.routes';
 
 const router: Router = Router();
 
@@ -70,5 +71,8 @@ router.use('/school/team', schoolTeamRoutes);
 
 // Admin
 router.use('/admin', adminRoutes);
+
+// Internal — cron-triggered jobs (gated by CRON_SECRET in prod)
+router.use('/internal', internalRoutes);
 
 export default router;

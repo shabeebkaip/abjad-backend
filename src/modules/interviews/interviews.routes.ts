@@ -11,5 +11,6 @@ router.get('/upcoming', interviewsController.getUpcoming.bind(interviewsControll
 router.get('/:interviewId', interviewsController.getInterview.bind(interviewsController));
 router.patch('/:interviewId/respond', interviewsController.respond.bind(interviewsController));
 router.patch('/:interviewId/complete', interviewsController.markCompleted.bind(interviewsController));
+router.post('/:interviewId/feedback', interviewsController.submitFeedback.bind(interviewsController));
 
 export default router;

@@ -14,6 +14,14 @@ export interface IInterviewFeedback {
   submittedAt: Date;
 }
 
+// SRD 2.6.4 — teacher-side post-interview feedback. Separate from the school's
+// IInterviewFeedback above (which carries the hire/maybe/reject evaluation).
+export interface ITeacherInterviewFeedback {
+  rating: number;       // 1–5
+  comment?: string;     // optional, max 500 chars
+  submittedAt: Date;
+}
+
 export interface ITeacherResponse {
   action: 'accepted' | 'declined' | 'reschedule_requested';
   reason?: string;
@@ -36,6 +44,7 @@ export interface IInterview extends Document {
   status: InterviewStatus;
   teacherResponse?: ITeacherResponse;
   feedback?: IInterviewFeedback;
+  teacherFeedback?: ITeacherInterviewFeedback;
   reminders: { type: '24h' | '1h'; sentAt: Date }[];
   responseDeadline?: Date;
   createdAt: Date;
@@ -80,6 +89,11 @@ const interviewSchema = new Schema<IInterview>(
       recommendation: { type: String, enum: ['hire','maybe','reject'] },
       notes: { type: String },
       evaluator: { type: String },
+      submittedAt: { type: Date },
+    },
+    teacherFeedback: {
+      rating: { type: Number, min: 1, max: 5 },
+      comment: { type: String, maxlength: 500 },
       submittedAt: { type: Date },
     },
     reminders: [

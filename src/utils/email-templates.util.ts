@@ -165,6 +165,51 @@ export function tplInterviewInvitation(opts: {
   };
 }
 
+// SRD 2.6.3 — interview reminder, sent to both teacher and school user.
+export function tplInterviewReminder(opts: {
+  recipientName: string;
+  audience: 'teacher' | 'school';
+  hoursBefore: 24 | 1;
+  jobTitle: string;
+  counterpartName: string; // teacher name (for school) or school name (for teacher)
+  scheduledAt: Date;
+  type: string;
+  duration: number;
+  location?: string;
+  meetingLink?: string;
+}): { subject: string; html: string } {
+  const typeLabel: Record<string, string> = {
+    in_person: 'In Person',
+    video: 'Video Call',
+    phone: 'Phone',
+    abjad_coordinated: 'Abjad Coordinated',
+  };
+  const locationDetail = opts.meetingLink
+    ? `<a href="${opts.meetingLink}" style="color:#00ACD3;">${opts.meetingLink}</a>`
+    : opts.location ?? '—';
+  const whenLabel = opts.hoursBefore === 24 ? 'tomorrow' : 'in 1 hour';
+  const headline  = opts.hoursBefore === 24 ? 'Interview reminder — tomorrow' : 'Interview reminder — starting in 1 hour';
+  const ctaPath   = opts.audience === 'teacher' ? '/interviews' : '/school/interviews';
+  const counterpartLabel = opts.audience === 'teacher' ? 'School' : 'Candidate';
+
+  return {
+    subject: `Reminder: Interview ${whenLabel} – ${opts.jobTitle}`,
+    html: layout('Interview Reminder', `
+      ${heading(headline)}
+      ${para(`Hi ${opts.recipientName}, this is a friendly reminder that your interview is scheduled ${whenLabel}.`)}
+      ${infoBox([
+        ['Position', opts.jobTitle],
+        [counterpartLabel, opts.counterpartName],
+        ['Date & Time', opts.scheduledAt.toLocaleString('en-SA', { dateStyle: 'full', timeStyle: 'short' })],
+        ['Duration', `${opts.duration} minutes`],
+        ['Format', typeLabel[opts.type] ?? opts.type],
+        ['Location / Link', locationDetail],
+      ])}
+      ${ctaButton('View Interview', `${BASE_URL}${ctaPath}`)}
+    `),
+  };
+}
+
 export function tplOfferReceived(opts: {
   teacherName: string;
   position: string;

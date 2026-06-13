@@ -36,6 +36,12 @@ if (!process.env.VERCEL) {
         console.log(`📝 Environment: ${process.env.NODE_ENV || 'development'}`);
         console.log(`🔗 Health check: http://localhost:${PORT}/health`);
       });
+      // SRD 2.6.3 — start the interview reminder scanner. Local dev only;
+      // production should hit POST /api/internal/process-reminders from a
+      // scheduler (Vercel Cron, external) since setInterval can't run in
+      // serverless functions.
+      const { startInterviewReminderWorker } = await import('./workers/interview-reminder.worker');
+      startInterviewReminderWorker();
     } catch (error) {
       console.error('Failed to start server:', error);
       process.exit(1);

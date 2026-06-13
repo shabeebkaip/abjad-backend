@@ -91,6 +91,33 @@ export class InterviewsRepository {
       { new: true }
     );
   }
+
+  // SRD 2.6.4 — teacher submits their post-interview feedback. Only allowed
+  // when interview belongs to the teacher AND is completed. Overwrites any
+  // previously-submitted feedback (teacher can amend).
+  async submitTeacherFeedback(
+    interviewId: string,
+    teacherId: string,
+    feedback: { rating: number; comment?: string },
+  ): Promise<IInterview | null> {
+    return Interview.findOneAndUpdate(
+      {
+        _id: new mongoose.Types.ObjectId(interviewId),
+        teacherId: new mongoose.Types.ObjectId(teacherId),
+        status: 'completed',
+      },
+      {
+        $set: {
+          teacherFeedback: {
+            rating: feedback.rating,
+            comment: feedback.comment,
+            submittedAt: new Date(),
+          },
+        },
+      },
+      { new: true },
+    );
+  }
 }
 
 export const interviewsRepository = new InterviewsRepository();

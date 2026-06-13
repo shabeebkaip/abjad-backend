@@ -63,6 +63,31 @@ export class InterviewsService {
     return interview;
   }
 
+  // SRD 2.6.4 — teacher submits post-interview feedback. Rating is required
+  // (1–5), comment is optional (≤500 chars). Interview must be completed.
+  async submitTeacherFeedback(
+    teacherId: string,
+    interviewId: string,
+    data: { rating: number; comment?: string },
+  ): Promise<IInterview> {
+    if (!Number.isInteger(data.rating) || data.rating < 1 || data.rating > 5) {
+      throw AppError.badRequest('Rating must be an integer between 1 and 5');
+    }
+    const comment = data.comment?.trim() || undefined;
+    if (comment && comment.length > 500) {
+      throw AppError.badRequest('Comment must be 500 characters or fewer');
+    }
+
+    const interview = await interviewsRepository.submitTeacherFeedback(interviewId, teacherId, {
+      rating: data.rating,
+      comment,
+    });
+    if (!interview) {
+      throw AppError.badRequest('Interview not found or not yet completed');
+    }
+    return interview;
+  }
+
   async getUpcoming(teacherId: string): Promise<IInterview[]> {
     return interviewsRepository.findUpcoming(teacherId);
   }
