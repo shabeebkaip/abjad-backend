@@ -25,13 +25,33 @@ export type JobStatus = 'draft' | 'active' | 'closed' | 'expired';
 
 export type ContractDurationType = 'day' | 'month' | 'year';
 
+export interface IBilingualText {
+  ar?: string;
+  en?: string;
+}
+
+// SRD 3.2.1 — sectioned rich description: Responsibilities / Requirements / School culture / Benefits.
+export interface IJobDescriptionSections {
+  responsibilities?: IBilingualText;
+  requirements?: IBilingualText;
+  culture?: IBilingualText;
+  benefits?: IBilingualText;
+}
+
 export interface IJob extends Document {
   uuid: string;
   schoolId: mongoose.Types.ObjectId;
+  // Primary title (back-compat + search). Derived from titleEn || titleAr when the bilingual fields are set.
   title: string;
+  titleAr?: string;
+  titleEn?: string;
   subjects: Subject[];
   gradeLevels: GradeLevel[];
+  // Primary description (back-compat + search). Composed from descriptionSections on save.
   description: string;
+  descriptionAr?: string;
+  descriptionEn?: string;
+  descriptionSections?: IJobDescriptionSections;
   employmentType: EmploymentType;
   salary: {
     min?: number;
@@ -47,6 +67,7 @@ export interface IJob extends Document {
   startDate?: Date;
   deadline?: Date;
   city: string;
+  campus?: string;
   languageRequirement: LanguageRequirement;
   experienceRequired?: ExperienceRange;
   degreeRequired?: DegreeType;
@@ -73,9 +94,20 @@ const jobSchema = new Schema<IJob>(
     uuid: { type: String, required: true, unique: true, default: () => new mongoose.Types.ObjectId().toString() },
     schoolId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     title: { type: String, required: true, trim: true },
+    titleAr: { type: String, trim: true },
+    titleEn: { type: String, trim: true },
     subjects: [{ type: String, enum: ['islamic_studies','arabic','english','math','science','physics','chemistry','biology','computer_science','social_studies','pe','art','other'] }],
     gradeLevels: [{ type: String, enum: ['kg','elementary_1','elementary_2','elementary_3','elementary_4','elementary_5','elementary_6','middle_7','middle_8','middle_9','high_10','high_11','high_12'] }],
     description: { type: String, required: true, maxlength: 10000 },
+    descriptionAr: { type: String, maxlength: 10000 },
+    descriptionEn: { type: String, maxlength: 10000 },
+    descriptionSections: {
+      responsibilities: { ar: String, en: String, _id: false },
+      requirements:     { ar: String, en: String, _id: false },
+      culture:          { ar: String, en: String, _id: false },
+      benefits:         { ar: String, en: String, _id: false },
+      _id: false,
+    },
     employmentType: { type: String, enum: ['full_time','part_time','contract','temporary'], required: true },
     salary: {
       min: { type: Number },
@@ -91,6 +123,7 @@ const jobSchema = new Schema<IJob>(
     startDate: { type: Date },
     deadline: { type: Date, index: true },
     city: { type: String, required: true, trim: true },
+    campus: { type: String, trim: true },
     languageRequirement: { type: String, enum: ['arabic','english','bilingual','other'], default: 'arabic' },
     experienceRequired: { type: String, enum: ['0-1','1-3','3-5','5-10','10+'] },
     degreeRequired: { type: String, enum: ['bachelor','master','phd','diploma','other'] },
