@@ -176,6 +176,24 @@ export class ApplicationsRepository {
     const { Job } = await import('../../models/job.model');
     await Job.updateOne({ _id: new mongoose.Types.ObjectId(jobId) }, { $inc: { applicationsCount: 1 } });
   }
+
+  // SRD 3.2.4 — auto-close a job when its applicationsCount has reached maxApplications.
+  // Race-safe: the filter performs the cap check inside the same query as the status flip.
+  // Returns true iff the job was just transitioned to "closed" by this call.
+  async closeJobIfFull(jobId: string): Promise<boolean> {
+    const { Job } = await import('../../models/job.model');
+    const result = await Job.updateOne(
+      {
+        _id: new mongoose.Types.ObjectId(jobId),
+        autoCloseOnMax: true,
+        status: 'active',
+        maxApplications: { $gt: 0 },
+        $expr: { $gte: ['$applicationsCount', '$maxApplications'] },
+      },
+      { $set: { status: 'closed' } },
+    );
+    return result.modifiedCount > 0;
+  }
 }
 
 export const applicationsRepository = new ApplicationsRepository();

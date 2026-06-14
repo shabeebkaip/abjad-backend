@@ -43,6 +43,8 @@ export class ApplicationsService {
     });
 
     await applicationsRepository.incrementJobApplicationsCount(jobId);
+    // SRD 3.2.4 — close the job if it has now reached maxApplications and the school opted in.
+    void applicationsRepository.closeJobIfFull(jobId);
 
     // Fire-and-forget emails
     void (async () => {
