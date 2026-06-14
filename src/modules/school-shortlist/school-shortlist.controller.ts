@@ -73,6 +73,25 @@ export class SchoolShortlistController {
     }
   }
 
+  async addTeachersBulk(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { teacherIds } = req.body as { teacherIds?: string[] };
+      if (!Array.isArray(teacherIds) || teacherIds.length === 0) {
+        res.status(400).json({ success: false, message: 'teacherIds must be a non-empty array' });
+        return;
+      }
+      const result = await schoolShortlistService.addTeachersBulk(
+        req.user!.userId,
+        String(req.params.shortlistId),
+        teacherIds,
+        req.user!.userId,
+      );
+      res.json({ success: true, data: result });
+    } catch (err) {
+      next(err);
+    }
+  }
+
   async removeTeacher(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const shortlist = await schoolShortlistService.removeTeacher(

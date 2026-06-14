@@ -50,6 +50,35 @@ export class SchoolShortlistService {
     return updated;
   }
 
+  // SRD 3.3.5 — bulk add teachers to a shortlist in one call.
+  // Returns { shortlist, added, skipped } so the client can confirm.
+  async addTeachersBulk(
+    schoolId: string,
+    shortlistId: string,
+    teacherIds: string[],
+    addedBy: string,
+  ): Promise<{ shortlist: IShortlistDocument; added: number; skipped: number }> {
+    if (!Array.isArray(teacherIds) || teacherIds.length === 0) {
+      throw AppError.badRequest('teacherIds must be a non-empty array');
+    }
+    let shortlist: IShortlistDocument | null = null;
+    let added = 0;
+    let skipped = 0;
+    for (const teacherId of teacherIds) {
+      const before = shortlist;
+      shortlist = await schoolShortlistRepository.addTeacher(
+        shortlistId, schoolId, teacherId, addedBy,
+      );
+      if (!shortlist) throw AppError.notFound('Shortlist not found');
+      // repo silently no-ops on duplicate teacher — detect via teacher count delta
+      const beforeCount = before?.teachers.length ?? -1;
+      if (shortlist.teachers.length > beforeCount) added++;
+      else if (before) skipped++;
+      else added++;
+    }
+    return { shortlist: shortlist as IShortlistDocument, added, skipped };
+  }
+
   async removeTeacher(
     schoolId: string,
     shortlistId: string,

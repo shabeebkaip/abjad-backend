@@ -12,6 +12,7 @@ router.get('/:shortlistId', schoolShortlistController.getShortlist.bind(schoolSh
 router.patch('/:shortlistId', schoolShortlistController.updateShortlist.bind(schoolShortlistController));
 router.delete('/:shortlistId', schoolShortlistController.deleteShortlist.bind(schoolShortlistController));
 router.post('/:shortlistId/teachers', schoolShortlistController.addTeacher.bind(schoolShortlistController));
+router.post('/:shortlistId/teachers/bulk', schoolShortlistController.addTeachersBulk.bind(schoolShortlistController));
 router.delete('/:shortlistId/teachers/:teacherId', schoolShortlistController.removeTeacher.bind(schoolShortlistController));
 
 export default router;

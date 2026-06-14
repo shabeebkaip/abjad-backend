@@ -96,6 +96,24 @@ export class SchoolCandidatesController {
       next(err);
     }
   }
+
+  // SRD 3.3.5 — POST /api/school/candidates/export-pdf { teacherIds }
+  async exportPdf(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { teacherIds } = req.body as { teacherIds?: string[] };
+      if (!Array.isArray(teacherIds) || teacherIds.length === 0) {
+        res.status(400).json({ success: false, message: 'teacherIds must be a non-empty array' });
+        return;
+      }
+      const pdfBuffer = await schoolCandidatesService.exportToPdf(teacherIds);
+      const today = new Date().toISOString().slice(0, 10);
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="abjad-candidates-${today}.pdf"`);
+      res.send(pdfBuffer);
+    } catch (err) {
+      next(err);
+    }
+  }
 }
 
 export const schoolCandidatesController = new SchoolCandidatesController();

@@ -8,6 +8,8 @@ router.use(authenticate, authorize('school'));
 
 // Search & profile
 router.get('/', schoolCandidatesController.searchCandidates.bind(schoolCandidatesController));
+// SRD 3.3.5 — bulk PDF export of selected candidates
+router.post('/export-pdf', schoolCandidatesController.exportPdf.bind(schoolCandidatesController));
 router.get('/:teacherId', schoolCandidatesController.getCandidateProfile.bind(schoolCandidatesController));
 
 // Notes on a candidate
