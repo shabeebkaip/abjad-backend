@@ -13,6 +13,15 @@ export interface IAdminContact {
   email: string;
 }
 
+export interface IHeadOfSchool {
+  name?: string;
+  jobTitle?: string;
+  phone?: string;
+  email?: string;
+}
+
+export type Curriculum = 'saudi' | 'british' | 'american' | 'ib' | 'cambridge';
+
 export interface ISchoolProfile {
   userId: mongoose.Types.ObjectId;
 
@@ -21,6 +30,7 @@ export interface ISchoolProfile {
   nameEn: string;
   type: 'government' | 'private' | 'international' | 'ahli';
   educationLevel: 'elementary' | 'middle' | 'high' | 'k12' | 'mixed';
+  curriculum?: Curriculum;
   gender: 'male' | 'female' | 'mixed';
 
   // Location
@@ -41,8 +51,19 @@ export interface ISchoolProfile {
   logoUrl?: string;
   logoKey?: string;
 
-  // Admin contact person
+  // Admin contact person (operational contact for the platform)
   adminContact?: IAdminContact;
+
+  // Head of school / principal (named separately from the operational admin)
+  headOfSchool?: IHeadOfSchool;
+
+  // Compensation defaults — used to prefill new job posts and surface a benchmark
+  defaultSalaryRange?: { min?: number; max?: number };
+  defaultDailyRate?: number;
+
+  // Verification credentials (number values; the file uploads live under documents)
+  crNumber?: string;        // Commercial Registration number
+  licenseNumber?: string;   // Ministry of Education / educational license number
 
   // Verification documents
   documents: {
@@ -80,6 +101,7 @@ const schoolProfileSchema = new Schema<ISchoolProfileDocument>(
     nameEn: { type: String, trim: true },
     type: { type: String, enum: ['government', 'private', 'international', 'ahli'] },
     educationLevel: { type: String, enum: ['elementary', 'middle', 'high', 'k12', 'mixed'] },
+    curriculum: { type: String, enum: ['saudi', 'british', 'american', 'ib', 'cambridge'] },
     gender: { type: String, enum: ['male', 'female', 'mixed'] },
 
     city: { type: String, trim: true },
@@ -103,6 +125,24 @@ const schoolProfileSchema = new Schema<ISchoolProfileDocument>(
       email: { type: String, trim: true, lowercase: true },
       _id: false,
     },
+
+    headOfSchool: {
+      name: { type: String, trim: true },
+      jobTitle: { type: String, trim: true },
+      phone: { type: String, trim: true },
+      email: { type: String, trim: true, lowercase: true },
+      _id: false,
+    },
+
+    defaultSalaryRange: {
+      min: { type: Number },
+      max: { type: Number },
+      _id: false,
+    },
+    defaultDailyRate: { type: Number },
+
+    crNumber: { type: String, trim: true },
+    licenseNumber: { type: String, trim: true },
 
     documents: {
       commercialRegistration: { type: documentSchema },

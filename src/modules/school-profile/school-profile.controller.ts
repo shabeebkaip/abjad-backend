@@ -48,6 +48,15 @@ export class SchoolProfileController {
     }
   }
 
+  async updateCredentials(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const profile = await schoolProfileService.updateCredentials(req.user!.userId, req.body);
+      res.json({ success: true, data: profile });
+    } catch (err) {
+      next(err);
+    }
+  }
+
   async uploadLogo(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       if (!req.file) {

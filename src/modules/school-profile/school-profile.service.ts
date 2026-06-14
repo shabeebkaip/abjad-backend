@@ -9,15 +9,19 @@ function calculateCompletion(profile: ISchoolProfileDocument): number {
   if (profile.nameAr || profile.nameEn) score += 15;
   if (profile.type) score += 5;
   if (profile.educationLevel) score += 5;
+  if (profile.curriculum) score += 3;
   if (profile.gender) score += 5;
   if (profile.city) score += 5;
   if (profile.logoUrl) score += 5;
 
-  if (profile.adminContact?.name && profile.adminContact?.phone) score += 15;
+  if (profile.adminContact?.name && profile.adminContact?.phone) score += 10;
+  if (profile.headOfSchool?.name) score += 5;
   if (profile.phone || profile.email) score += 5;
 
-  if (profile.documents?.commercialRegistration?.url) score += 20;
-  if (profile.documents?.ministryLicense?.url) score += 15;
+  if (profile.crNumber) score += 3;
+  if (profile.licenseNumber) score += 3;
+  if (profile.documents?.commercialRegistration?.url) score += 18;
+  if (profile.documents?.ministryLicense?.url) score += 13;
 
   return Math.min(score, 100);
 }
@@ -39,7 +43,31 @@ export class SchoolProfileService {
     let profile = await schoolProfileRepository.findByUserId(userId);
     if (!profile) profile = await schoolProfileRepository.create(userId);
 
-    const allowed = ['nameAr', 'nameEn', 'type', 'educationLevel', 'gender', 'foundedYear', 'studentsCount'];
+    const allowed = [
+      'nameAr', 'nameEn',
+      'type', 'educationLevel', 'curriculum', 'gender',
+      'foundedYear', 'studentsCount',
+      'defaultSalaryRange', 'defaultDailyRate',
+    ];
+    const filtered: Record<string, unknown> = {};
+    for (const key of allowed) {
+      if (data[key] !== undefined) filtered[key] = data[key];
+    }
+
+    const updated = await schoolProfileRepository.updateRoot(userId, filtered);
+    if (!updated) throw AppError.notFound('Profile not found');
+
+    const pct = calculateCompletion(updated);
+    await schoolProfileRepository.updateCompletionPercentage(userId, pct);
+    updated.completionPercentage = pct;
+    return updated;
+  }
+
+  async updateCredentials(userId: string, data: Record<string, unknown>): Promise<ISchoolProfileDocument> {
+    let profile = await schoolProfileRepository.findByUserId(userId);
+    if (!profile) profile = await schoolProfileRepository.create(userId);
+
+    const allowed = ['crNumber', 'licenseNumber', 'headOfSchool'];
     const filtered: Record<string, unknown> = {};
     for (const key of allowed) {
       if (data[key] !== undefined) filtered[key] = data[key];
