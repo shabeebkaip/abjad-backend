@@ -7,7 +7,8 @@ export class SchoolCandidatesController {
     try {
       const {
         subjects, gradeLevels, experienceRange, city, gender,
-        nationality, degreeType, language, employmentStatus, sortBy, page, limit,
+        nationality, degreeType, language, languageProficiency, employmentStatus,
+        certificationsKeyword, salaryMaxAcceptable, sortBy, page, limit,
       } = req.query;
 
       const toArray = (v: unknown): string[] | undefined => {
@@ -24,7 +25,10 @@ export class SchoolCandidatesController {
         nationality: nationality as string,
         degreeType: degreeType as string,
         language: language as string,
+        languageProficiency: languageProficiency as string,
         employmentStatus: employmentStatus as string,
+        certificationsKeyword: certificationsKeyword as string,
+        salaryMaxAcceptable: salaryMaxAcceptable ? Number(salaryMaxAcceptable) : undefined,
         sortBy: sortBy as 'newest' | 'completion',
         page: page ? Number(page) : 1,
         limit: limit ? Number(limit) : 20,

@@ -11,10 +11,22 @@ export interface CandidateSearchFilters {
   nationality?: string;
   degreeType?: string;
   language?: string;
+  // SRD 3.3.2 — proficiency pairs with `language` via $elemMatch on the same array element.
+  languageProficiency?: string;
   employmentStatus?: string;
+  // SRD 3.3.2 — free-text match against certifications[].name (case-insensitive substring).
+  certificationsKeyword?: string;
+  // SRD 3.3.2 — school's budget ceiling (SAR/mo). Selects teachers whose minimum
+  // expectation is at or below this number; teachers with no minimum set are also included
+  // so they can still be discovered.
+  salaryMaxAcceptable?: number;
   sortBy?: 'newest' | 'completion';
   page?: number;
   limit?: number;
+}
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 export class SchoolCandidatesRepository {
@@ -47,10 +59,29 @@ export class SchoolCandidatesRepository {
       query['education.degreeType'] = filters.degreeType;
     }
     if (filters.language) {
-      query['languages'] = { $elemMatch: { language: filters.language } };
+      // SRD 3.3.2 — pair language + proficiency on the same array element.
+      const elem: Record<string, string> = { language: filters.language };
+      if (filters.languageProficiency) elem.proficiency = filters.languageProficiency;
+      query['languages'] = { $elemMatch: elem };
+    } else if (filters.languageProficiency) {
+      // Proficiency without language → match any language entry with that proficiency.
+      query['languages'] = { $elemMatch: { proficiency: filters.languageProficiency } };
     }
     if (filters.employmentStatus) {
       query['professional.employmentStatus'] = filters.employmentStatus;
+    }
+    if (filters.certificationsKeyword) {
+      const re = new RegExp(escapeRegex(filters.certificationsKeyword.trim()), 'i');
+      query['certifications.name'] = re;
+    }
+    if (filters.salaryMaxAcceptable != null && !isNaN(filters.salaryMaxAcceptable)) {
+      // Include teachers without a stated minimum (so they remain discoverable),
+      // plus those whose minimum is at or below the school's ceiling.
+      query['$or'] = [
+        { 'salaryExpectations.minMonthlySAR': { $exists: false } },
+        { 'salaryExpectations.minMonthlySAR': null },
+        { 'salaryExpectations.minMonthlySAR': { $lte: filters.salaryMaxAcceptable } },
+      ];
     }
 
     const page = filters.page ?? 1;
