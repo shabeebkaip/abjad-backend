@@ -82,6 +82,25 @@ export class SchoolJobsService {
     return updated;
   }
 
+  // SRD 3.2.7 — extend an active or expired job's deadline. For expired jobs, also flips status back to active.
+  async extendDeadline(schoolId: string, jobId: string, newDeadline: string): Promise<IJob> {
+    const job = await schoolJobsRepository.findByIdAndSchool(jobId, schoolId);
+    if (!job) throw AppError.notFound('Job not found');
+    if (job.status === 'closed' || job.status === 'draft') {
+      throw AppError.badRequest('Only active or expired jobs can have their deadline extended');
+    }
+    const parsed = new Date(newDeadline);
+    if (isNaN(parsed.getTime())) throw AppError.badRequest('Invalid deadline');
+    if (parsed.getTime() <= Date.now()) throw AppError.badRequest('New deadline must be in the future');
+
+    const updates: Record<string, unknown> = { deadline: parsed };
+    if (job.status === 'expired') updates.status = 'active';
+
+    const updated = await schoolJobsRepository.update(jobId, schoolId, updates);
+    if (!updated) throw AppError.notFound('Job not found');
+    return updated;
+  }
+
   async deleteJob(schoolId: string, jobId: string): Promise<void> {
     const deleted = await schoolJobsRepository.delete(jobId, schoolId);
     if (!deleted) throw AppError.badRequest('Only draft jobs can be deleted');

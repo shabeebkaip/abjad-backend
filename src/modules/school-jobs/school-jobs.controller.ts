@@ -63,6 +63,20 @@ export class SchoolJobsController {
     }
   }
 
+  async extendDeadline(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { deadline } = req.body as { deadline?: string };
+      if (!deadline) {
+        res.status(400).json({ success: false, message: 'deadline is required' });
+        return;
+      }
+      const job = await schoolJobsService.extendDeadline(req.user!.userId, String(req.params.jobId), deadline);
+      res.json({ success: true, data: job, message: 'Deadline extended' });
+    } catch (err) {
+      next(err);
+    }
+  }
+
   async deleteJob(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       await schoolJobsService.deleteJob(req.user!.userId, String(req.params.jobId));

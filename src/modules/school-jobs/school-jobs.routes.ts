@@ -12,6 +12,7 @@ router.get('/:jobId', schoolJobsController.getJob.bind(schoolJobsController));
 router.patch('/:jobId', schoolJobsController.updateJob.bind(schoolJobsController));
 router.post('/:jobId/publish', schoolJobsController.publishJob.bind(schoolJobsController));
 router.post('/:jobId/close', schoolJobsController.closeJob.bind(schoolJobsController));
+router.post('/:jobId/extend-deadline', schoolJobsController.extendDeadline.bind(schoolJobsController));
 router.delete('/:jobId', schoolJobsController.deleteJob.bind(schoolJobsController));
 router.get('/:jobId/stats', schoolJobsController.getJobStats.bind(schoolJobsController));
 
