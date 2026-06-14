@@ -1,6 +1,6 @@
 /**
  * Per-endpoint rate limiters for security
- * - OTP endpoints: Prevent SMS flood & brute force
+ * - OTP endpoints: Prevent email flood & brute force
  * - Refresh endpoint: Allow reasonable burst for token rotation
  * - Global: Catch-all for all API endpoints
  */
@@ -10,7 +10,7 @@ import rateLimit from 'express-rate-limit';
 /**
  * OTP limiter: 5 requests per 10 minutes
  * Applied to: POST /auth/send-otp, POST /auth/verify-otp
- * Reason: Prevent SMS/email flood and brute force attacks
+ * Reason: Prevent email flood and brute force attacks
  */
 export const otpLimiter = rateLimit({
   windowMs: 10 * 60 * 1000, // 10 minutes
