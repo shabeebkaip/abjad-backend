@@ -10,6 +10,8 @@ router.use(authenticate, authorize('school'));
 router.get('/', schoolCandidatesController.searchCandidates.bind(schoolCandidatesController));
 // SRD 3.3.5 — bulk PDF export of selected candidates
 router.post('/export-pdf', schoolCandidatesController.exportPdf.bind(schoolCandidatesController));
+// SRD 3.4.3 — full history scoped to this school
+router.get('/:teacherId/history', schoolCandidatesController.getCandidateHistory.bind(schoolCandidatesController));
 router.get('/:teacherId', schoolCandidatesController.getCandidateProfile.bind(schoolCandidatesController));
 
 // Notes on a candidate

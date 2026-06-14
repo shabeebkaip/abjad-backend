@@ -1,8 +1,14 @@
+import mongoose from 'mongoose';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { schoolCandidatesRepository, CandidateSearchFilters } from './school-candidates.repository';
 import { ITeacherProfileDocument } from '../../models/teacher-profile.model';
 import { ICandidateNoteDocument } from '../../models/candidate-note.model';
 import { AppError } from '../../utils/app-error.util';
+import { Application } from '../../models/application.model';
+import { Interview } from '../../models/interview.model';
+import { Offer } from '../../models/offer.model';
+import Shortlist from '../../models/shortlist.model';
+import CandidateNote from '../../models/candidate-note.model';
 
 export class SchoolCandidatesService {
   async searchCandidates(
@@ -49,6 +55,106 @@ export class SchoolCandidatesService {
   async deleteNote(schoolId: string, noteId: string): Promise<void> {
     const deleted = await schoolCandidatesRepository.deleteNote(noteId, schoolId);
     if (!deleted) throw AppError.notFound('Note not found');
+  }
+
+  // SRD 3.4.3 — Profile History: all interactions between THIS school and THIS teacher.
+  // Scoped per-school to protect the candidate's privacy across other schools.
+  async getCandidateHistory(schoolId: string, teacherId: string): Promise<{
+    applications: Array<{ _id: string; status: string; matchScore?: number; coverLetter?: string; referenceNumber?: string; createdAt: Date; updatedAt?: Date; job: { _id: string; title: string; city?: string } | null }>;
+    interviews:   Array<{ _id: string; type: string; status: string; scheduledAt: Date; duration?: number; meetingLink?: string; feedback?: unknown; job: { _id: string; title: string } | null }>;
+    offers:       Array<{ _id: string; status: string; position?: string; salary?: unknown; sentAt?: Date; respondedAt?: Date; expiresAt?: Date; job: { _id: string; title: string } | null }>;
+    notes:        Array<{ _id: string; content: string; tags?: string[]; applicationId?: string; createdAt: Date }>;
+    shortlistMemberships: Array<{ shortlistId: string; shortlistName: string; color?: string; addedAt: Date }>;
+  }> {
+    const schoolObjId  = new mongoose.Types.ObjectId(schoolId);
+    const teacherObjId = new mongoose.Types.ObjectId(teacherId);
+
+    const [applications, interviews, offers, notes, shortlists] = await Promise.all([
+      Application.find({ schoolId: schoolObjId, teacherId: teacherObjId })
+        .populate('jobId', 'title city')
+        .sort({ createdAt: -1 })
+        .lean(),
+      Interview.find({ schoolId: schoolObjId, teacherId: teacherObjId })
+        .populate('jobId', 'title')
+        .sort({ scheduledAt: -1 })
+        .lean(),
+      Offer.find({ schoolId: schoolObjId, teacherId: teacherObjId })
+        .populate('jobId', 'title')
+        .sort({ createdAt: -1 })
+        .lean(),
+      CandidateNote.find({ schoolId: schoolObjId, teacherId: teacherObjId })
+        .sort({ createdAt: -1 })
+        .lean(),
+      Shortlist.find({ schoolId: schoolObjId, 'teachers.teacherId': teacherObjId })
+        .lean(),
+    ]);
+
+    type LeanRef<T> = T & { _id: mongoose.Types.ObjectId };
+
+    return {
+      applications: (applications as unknown as Array<{
+        _id: mongoose.Types.ObjectId; status: string; matchScore?: number;
+        coverLetter?: string; referenceNumber?: string; createdAt: Date; updatedAt?: Date;
+        jobId?: LeanRef<{ title: string; city?: string }>;
+      }>).map((a) => ({
+        _id: a._id.toString(),
+        status: a.status,
+        matchScore: a.matchScore,
+        coverLetter: a.coverLetter,
+        referenceNumber: a.referenceNumber,
+        createdAt: a.createdAt,
+        updatedAt: a.updatedAt,
+        job: a.jobId ? { _id: a.jobId._id.toString(), title: a.jobId.title, city: a.jobId.city } : null,
+      })),
+      interviews: (interviews as unknown as Array<{
+        _id: mongoose.Types.ObjectId; type: string; status: string; scheduledAt: Date;
+        duration?: number; meetingLink?: string; feedback?: unknown;
+        jobId?: LeanRef<{ title: string }>;
+      }>).map((i) => ({
+        _id: i._id.toString(),
+        type: i.type,
+        status: i.status,
+        scheduledAt: i.scheduledAt,
+        duration: i.duration,
+        meetingLink: i.meetingLink,
+        feedback: i.feedback,
+        job: i.jobId ? { _id: i.jobId._id.toString(), title: i.jobId.title } : null,
+      })),
+      offers: (offers as unknown as Array<{
+        _id: mongoose.Types.ObjectId; status: string; position?: string;
+        salary?: unknown; sentAt?: Date; respondedAt?: Date; expiresAt?: Date;
+        jobId?: LeanRef<{ title: string }>;
+      }>).map((o) => ({
+        _id: o._id.toString(),
+        status: o.status,
+        position: o.position,
+        salary: o.salary,
+        sentAt: o.sentAt,
+        respondedAt: o.respondedAt,
+        expiresAt: o.expiresAt,
+        job: o.jobId ? { _id: o.jobId._id.toString(), title: o.jobId.title } : null,
+      })),
+      notes: (notes as unknown as Array<{
+        _id: mongoose.Types.ObjectId; content: string; tags?: string[];
+        applicationId?: mongoose.Types.ObjectId; createdAt: Date;
+      }>).map((n) => ({
+        _id: n._id.toString(),
+        content: n.content,
+        tags: n.tags,
+        applicationId: n.applicationId?.toString(),
+        createdAt: n.createdAt,
+      })),
+      shortlistMemberships: shortlists.flatMap((sl) => {
+        const entry = sl.teachers.find((t) => t.teacherId.toString() === teacherId);
+        if (!entry) return [];
+        return [{
+          shortlistId: (sl as { _id: mongoose.Types.ObjectId })._id.toString(),
+          shortlistName: sl.name,
+          color: sl.color,
+          addedAt: entry.addedAt,
+        }];
+      }),
+    };
   }
 
   // SRD 3.3.5 — export a set of candidate profiles as a multi-page PDF report.

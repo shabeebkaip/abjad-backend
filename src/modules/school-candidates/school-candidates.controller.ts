@@ -97,6 +97,19 @@ export class SchoolCandidatesController {
     }
   }
 
+  // SRD 3.4.3 — GET /api/school/candidates/:teacherId/history
+  async getCandidateHistory(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const history = await schoolCandidatesService.getCandidateHistory(
+        req.user!.userId,
+        String(req.params.teacherId),
+      );
+      res.json({ success: true, data: history });
+    } catch (err) {
+      next(err);
+    }
+  }
+
   // SRD 3.3.5 — POST /api/school/candidates/export-pdf { teacherIds }
   async exportPdf(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
