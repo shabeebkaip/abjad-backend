@@ -73,6 +73,10 @@ export class AdminService {
     return adminRepository.getStats();
   }
 
+  async getSidebarCounts() {
+    return adminRepository.getSidebarCounts();
+  }
+
   // ── Schools ───────────────────────────────────────────────
 
   async listSchools(status?: string, page = 1, limit = 20) {

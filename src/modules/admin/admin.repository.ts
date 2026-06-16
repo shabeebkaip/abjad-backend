@@ -6,6 +6,7 @@ import { Job } from '../../models/job.model';
 import { Application } from '../../models/application.model';
 import { Interview } from '../../models/interview.model';
 import { Offer } from '../../models/offer.model';
+import { Invoice } from '../../models/invoice.model';
 
 function getDateRangeStart(range: string): Date {
   const ms = {
@@ -124,6 +125,34 @@ export class AdminRepository {
       },
       { new: true }
     );
+  }
+
+  // ── Sidebar badge counts ──────────────────────────────────
+
+  /**
+   * One round-trip count payload for the admin sidebar.
+   * Every count represents "needs admin attention" — not totals.
+   */
+  async getSidebarCounts(): Promise<{
+    teachersPending: number;
+    schoolsPending: number;
+    ticketsOpen: number;
+    invoicesPending: number;
+    queueTotal: number;
+  }> {
+    const [teachersPending, schoolsPending, ticketsOpen, invoicesPending] = await Promise.all([
+      TeacherProfile.countDocuments({ profileStatus: 'pending' }),
+      SchoolProfile.countDocuments({ profileStatus: 'pending' }),
+      SupportTicket.countDocuments({ status: { $in: ['open', 'in_progress'] } }),
+      Invoice.countDocuments({ status: 'pending', paymentMethod: 'bank_transfer' }),
+    ]);
+    return {
+      teachersPending,
+      schoolsPending,
+      ticketsOpen,
+      invoicesPending,
+      queueTotal: teachersPending + schoolsPending + invoicesPending,
+    };
   }
 
   // ── Dashboard stats ───────────────────────────────────────

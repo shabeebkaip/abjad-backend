@@ -24,6 +24,14 @@ class AdminController {
     } catch (err) { next(err); }
   }
 
+  // GET /admin/sidebar-counts
+  async getSidebarCounts(_req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const counts = await adminService.getSidebarCounts();
+      res.json({ success: true, data: counts });
+    } catch (err) { next(err); }
+  }
+
   // ── Schools ───────────────────────────────────────────────
 
   // GET /admin/schools?status=pending&page=1&limit=20

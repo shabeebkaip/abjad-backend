@@ -18,6 +18,9 @@ router.use(authenticate, authorize('admin'));
 // Dashboard stats
 router.get('/stats', adminController.getStats.bind(adminController));
 
+// Tier 1 #3 — Sidebar live badge counts (one round-trip)
+router.get('/sidebar-counts', adminController.getSidebarCounts.bind(adminController));
+
 // School verification
 router.get('/schools', adminController.listSchools.bind(adminController));
 router.get('/schools/:profileId', adminController.getSchool.bind(adminController));
