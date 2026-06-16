@@ -77,6 +77,15 @@ export class AdminService {
     return adminRepository.getSidebarCounts();
   }
 
+  async getDashboardCharts() {
+    const [registrations, applicationsThisWeek, conversion] = await Promise.all([
+      adminRepository.getRegistrationsLast7Months(),
+      adminRepository.getApplicationsLast7Days(),
+      adminRepository.getConversionMetrics(),
+    ]);
+    return { registrations, applicationsThisWeek, conversion };
+  }
+
   // ── Schools ───────────────────────────────────────────────
 
   async listSchools(status?: string, page = 1, limit = 20) {

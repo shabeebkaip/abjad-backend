@@ -127,6 +127,124 @@ export class AdminRepository {
     );
   }
 
+  // ── Dashboard charts ──────────────────────────────────────
+
+  /**
+   * Last 7 calendar months of teacher + school registrations, oldest first.
+   * Month key is `YYYY-MM`; frontend renders just the month name.
+   */
+  async getRegistrationsLast7Months(): Promise<
+    { monthKey: string; teachers: number; schools: number }[]
+  > {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth() - 6, 1);
+
+    const pipeline = (model: typeof TeacherProfile | typeof SchoolProfile) =>
+      model.aggregate<{ _id: string; count: number }>([
+        { $match: { createdAt: { $gte: start } } },
+        {
+          $group: {
+            _id: { $dateToString: { format: '%Y-%m', date: '$createdAt' } },
+            count: { $sum: 1 },
+          },
+        },
+      ]);
+
+    const [teacherBuckets, schoolBuckets] = await Promise.all([
+      pipeline(TeacherProfile),
+      pipeline(SchoolProfile),
+    ]);
+
+    const teacherMap = new Map(teacherBuckets.map((b) => [b._id, b.count]));
+    const schoolMap  = new Map(schoolBuckets.map((b)  => [b._id, b.count]));
+
+    const result: { monthKey: string; teachers: number; schools: number }[] = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      result.push({
+        monthKey: key,
+        teachers: teacherMap.get(key) ?? 0,
+        schools:  schoolMap.get(key)  ?? 0,
+      });
+    }
+    return result;
+  }
+
+  /**
+   * Last 7 days of applications, oldest first. Uses the calendar date (UTC)
+   * so all admin users see the same buckets regardless of timezone.
+   */
+  async getApplicationsLast7Days(): Promise<{ dayKey: string; count: number }[]> {
+    const now = new Date();
+    const start = new Date(now);
+    start.setUTCHours(0, 0, 0, 0);
+    start.setUTCDate(start.getUTCDate() - 6);
+
+    const buckets = await Application.aggregate<{ _id: string; count: number }>([
+      { $match: { createdAt: { $gte: start } } },
+      {
+        $group: {
+          _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+    const bucketMap = new Map(buckets.map((b) => [b._id, b.count]));
+
+    const result: { dayKey: string; count: number }[] = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(start);
+      d.setUTCDate(start.getUTCDate() + (6 - i));
+      const key = d.toISOString().slice(0, 10);
+      result.push({ dayKey: key, count: bucketMap.get(key) ?? 0 });
+    }
+    return result;
+  }
+
+  /**
+   * Four pipeline conversion rates as integer percentages 0-100.
+   * Each step's denominator is the *upstream* funnel population, not
+   * the total applications — so a low Interview→Offer rate reflects
+   * the real choke point, not interview rarity.
+   */
+  async getConversionMetrics(): Promise<{
+    profileCompletion: number;
+    applicationToInterview: number;
+    interviewToOffer: number;
+    offerToHired: number;
+  }> {
+    const PIPELINE_AFTER_INTERVIEW = ['interview_scheduled', 'offer_extended', 'hired'];
+    const PIPELINE_AFTER_OFFER     = ['offer_extended', 'hired'];
+
+    const [
+      avgCompletion,
+      total,
+      reachedInterview,
+      reachedOffer,
+      hired,
+    ] = await Promise.all([
+      TeacherProfile.aggregate<{ _id: null; avg: number }>([
+        { $match: { profileStatus: { $in: ['approved', 'pending'] } } },
+        { $group: { _id: null, avg: { $avg: '$completionPercentage' } } },
+      ]),
+      Application.countDocuments({}),
+      Application.countDocuments({ status: { $in: PIPELINE_AFTER_INTERVIEW } }),
+      Application.countDocuments({ status: { $in: PIPELINE_AFTER_OFFER } }),
+      Application.countDocuments({ status: 'hired' }),
+    ]);
+
+    const pct = (num: number, den: number) =>
+      den === 0 ? 0 : Math.round((num / den) * 100);
+
+    return {
+      profileCompletion:      Math.round(avgCompletion[0]?.avg ?? 0),
+      applicationToInterview: pct(reachedInterview, total),
+      interviewToOffer:       pct(reachedOffer,    reachedInterview),
+      offerToHired:           pct(hired,           reachedOffer),
+    };
+  }
+
   // ── Sidebar badge counts ──────────────────────────────────
 
   /**

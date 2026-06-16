@@ -32,6 +32,14 @@ class AdminController {
     } catch (err) { next(err); }
   }
 
+  // GET /admin/dashboard-charts
+  async getDashboardCharts(_req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const charts = await adminService.getDashboardCharts();
+      res.json({ success: true, data: charts });
+    } catch (err) { next(err); }
+  }
+
   // ── Schools ───────────────────────────────────────────────
 
   // GET /admin/schools?status=pending&page=1&limit=20
