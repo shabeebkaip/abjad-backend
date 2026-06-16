@@ -20,6 +20,9 @@ import schoolDashboardRoutes from '../modules/school-dashboard/school-dashboard.
 import schoolTeamRoutes from '../modules/school-team/school-team.routes';
 import adminRoutes from '../modules/admin/admin.routes';
 import internalRoutes from '../modules/internal/internal.routes';
+import subscriptionsRoutes from '../modules/subscriptions/subscriptions.routes';
+import { subscriptionsController } from '../modules/subscriptions/subscriptions.controller';
+import { authenticate } from '../middlewares/auth';
 
 const router: Router = Router();
 
@@ -71,6 +74,11 @@ router.use('/school/team', schoolTeamRoutes);
 
 // Admin
 router.use('/admin', adminRoutes);
+
+// Subscriptions (Phase B) — teacher + school facing
+router.use('/subscriptions', subscriptionsRoutes);
+// Public catalogue of pricing plans — needs auth, not gated by role.
+router.get('/pricing-plans', authenticate, subscriptionsController.listPublicPlans.bind(subscriptionsController));
 
 // Internal — cron-triggered jobs (gated by CRON_SECRET in prod)
 router.use('/internal', internalRoutes);

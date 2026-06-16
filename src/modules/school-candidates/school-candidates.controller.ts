@@ -1,6 +1,7 @@
 import { Response, NextFunction } from 'express';
 import { AuthRequest } from '../../middlewares/auth';
 import { schoolCandidatesService } from './school-candidates.service';
+import { getSchoolEntitlement } from '../../utils/entitlement.util';
 
 export class SchoolCandidatesController {
   async searchCandidates(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
@@ -16,6 +17,16 @@ export class SchoolCandidatesController {
         return Array.isArray(v) ? (v as string[]) : [v as string];
       };
 
+      // SRD §2.1.5 / Phase B — trial CV cap. Schools on a trial see only the
+      // top-by-match N candidates. Paid + legacy bypass.
+      const entitlement = await getSchoolEntitlement(req.user!.userId);
+      const requestedLimit = limit ? Number(limit) : 20;
+      const effectiveLimit =
+        entitlement.cvCap != null ? Math.min(requestedLimit, entitlement.cvCap) : requestedLimit;
+      // Trial users only see page 1 — pagination beyond the cap is a no-op.
+      const requestedPage = page ? Number(page) : 1;
+      const effectivePage = entitlement.cvCap != null ? 1 : requestedPage;
+
       const result = await schoolCandidatesService.searchCandidates({
         subjects: toArray(subjects),
         gradeLevels: toArray(gradeLevels),
@@ -30,11 +41,23 @@ export class SchoolCandidatesController {
         certificationsKeyword: certificationsKeyword as string,
         salaryMaxAcceptable: salaryMaxAcceptable ? Number(salaryMaxAcceptable) : undefined,
         sortBy: sortBy as 'newest' | 'completion',
-        page: page ? Number(page) : 1,
-        limit: limit ? Number(limit) : 20,
+        page: effectivePage,
+        limit: effectiveLimit,
       });
 
-      res.json({ success: true, data: result });
+      // Hint the client about the trial cap so the UI can render an "upgrade"
+      // banner instead of just "no more results."
+      res.json({
+        success: true,
+        data: result,
+        meta: {
+          entitlement: {
+            source: entitlement.source,
+            cvCap: entitlement.cvCap,
+            trialEndsAt: entitlement.trialEndsAt,
+          },
+        },
+      });
     } catch (err) {
       next(err);
     }

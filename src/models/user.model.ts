@@ -29,6 +29,13 @@ export interface IUser {
   deviceTokens: string[];
   language: 'ar' | 'en';
   suspensionReason?: string;
+  // ── Phase B billing — trial + grandfathering (SSD §2.1.5) ────────
+  // legacyAccess: set to true for accounts that existed BEFORE the paywall
+  // flipped on. These accounts bypass subscription checks forever.
+  legacyAccess?: boolean;
+  // Trial bookkeeping. Only meaningful for role=school.
+  trialStartedAt?: Date;
+  trialEndsAt?: Date;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -72,6 +79,9 @@ export interface IUserDocument extends Document {
   deviceTokens: string[];
   language: 'ar' | 'en';
   suspensionReason?: string;
+  legacyAccess?: boolean;
+  trialStartedAt?: Date;
+  trialEndsAt?: Date;
 }
 
 export interface IUserMethods {
@@ -152,6 +162,10 @@ const userSchema = new Schema<UserDocument>(
     deviceTokens: [{ type: String }],
     language: { type: String, enum: ["ar", "en"], default: "ar" },
     suspensionReason: { type: String, trim: true },
+    // Phase B billing
+    legacyAccess: { type: Boolean, default: false, index: true },
+    trialStartedAt: { type: Date },
+    trialEndsAt: { type: Date, index: true },
   },
   { timestamps: true },
 );
