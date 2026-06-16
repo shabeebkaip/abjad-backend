@@ -4,6 +4,7 @@ import { adminPricingController } from './admin-pricing.controller';
 import { adminRankingController } from './admin-ranking.controller';
 import { adminPaymentsController } from './admin-payments.controller';
 import { auditController } from '../audit/audit.controller';
+import { queueController } from '../queue/queue.controller';
 import { authenticate, authorize } from '../../middlewares/auth';
 
 const router = Router();
@@ -70,6 +71,13 @@ router.get('/premium-gate', adminRankingController.premiumGateStatus.bind(adminR
 // Tier 1 #1 — Admin audit log (append-only, immutable history of every state-changing action)
 router.get('/audit-log', auditController.list.bind(auditController));
 router.get('/audit-log/target/:type/:id', auditController.forTarget.bind(auditController));
+
+// Tier 1 #2 — Approval Queue (Mission Control)
+router.get('/queue', queueController.list.bind(queueController));
+router.post('/queue/claim', queueController.claim.bind(queueController));
+router.post('/queue/unclaim', queueController.unclaim.bind(queueController));
+router.post('/queue/snooze', queueController.snooze.bind(queueController));
+router.post('/queue/unsnooze', queueController.unsnooze.bind(queueController));
 
 // SRD subscription Phase D — invoices, payments, ledger, subscriptions, bank-transfer admin
 router.get('/invoices', adminPaymentsController.listInvoices.bind(adminPaymentsController));
