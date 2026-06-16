@@ -20,16 +20,68 @@ export interface CandidateSearchFilters {
   // expectation is at or below this number; teachers with no minimum set are also included
   // so they can still be discovered.
   salaryMaxAcceptable?: number;
-  sortBy?: 'newest' | 'completion';
+  // 'best_match' — WDRS-driven ranking (default). 'newest' / 'completion' use
+  // simple DB-level sorts and skip the WDRS pipeline.
+  sortBy?: 'best_match' | 'newest' | 'completion';
   page?: number;
   limit?: number;
 }
+
+// SSD §1.2 — cap for WDRS in-memory ranking. Larger pools would push us toward
+// a precomputed score column on TeacherProfile.
+export const RANK_FETCH_CAP = 500;
 
 function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+/**
+ * Builds the Mongo filter for a candidate search — shared by `search()` and
+ * the WDRS path `findAllForRanking()` so the same filters apply identically.
+ */
+export function buildCandidateQuery(filters: CandidateSearchFilters): Record<string, unknown> {
+  const query: Record<string, unknown> = { profileStatus: 'approved' };
+  if (filters.subjects?.length) query['professional.subjects'] = { $in: filters.subjects };
+  if (filters.gradeLevels?.length) query['professional.gradeLevels'] = { $in: filters.gradeLevels };
+  if (filters.experienceRange) query['professional.experienceRange'] = filters.experienceRange;
+  if (filters.city) {
+    query['locationPreferences.preferredCities'] = Array.isArray(filters.city)
+      ? { $in: filters.city }
+      : filters.city;
+  }
+  if (filters.gender) query['personal.gender'] = filters.gender;
+  if (filters.nationality) query['personal.nationality'] = filters.nationality;
+  if (filters.degreeType) query['education.degreeType'] = filters.degreeType;
+  if (filters.language) {
+    const elem: Record<string, string> = { language: filters.language };
+    if (filters.languageProficiency) elem.proficiency = filters.languageProficiency;
+    query['languages'] = { $elemMatch: elem };
+  } else if (filters.languageProficiency) {
+    query['languages'] = { $elemMatch: { proficiency: filters.languageProficiency } };
+  }
+  if (filters.employmentStatus) query['professional.employmentStatus'] = filters.employmentStatus;
+  if (filters.certificationsKeyword) {
+    const re = new RegExp(escapeRegex(filters.certificationsKeyword.trim()), 'i');
+    query['certifications.name'] = re;
+  }
+  if (filters.salaryMaxAcceptable != null && !isNaN(filters.salaryMaxAcceptable)) {
+    query['$or'] = [
+      { 'salaryExpectations.minMonthlySAR': { $exists: false } },
+      { 'salaryExpectations.minMonthlySAR': null },
+      { 'salaryExpectations.minMonthlySAR': { $lte: filters.salaryMaxAcceptable } },
+    ];
+  }
+  return query;
+}
+
 export class SchoolCandidatesRepository {
+  async findAllForRanking(filters: CandidateSearchFilters): Promise<ITeacherProfileDocument[]> {
+    const query = buildCandidateQuery(filters);
+    // Hard cap — beyond this we'd need a precomputed score column on TeacherProfile.
+    const docs = await TeacherProfile.find(query).limit(RANK_FETCH_CAP).lean();
+    return docs as ITeacherProfileDocument[];
+  }
+
   async search(
     filters: CandidateSearchFilters
   ): Promise<{ teachers: ITeacherProfileDocument[]; total: number }> {

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { adminController } from './admin.controller';
 import { adminPricingController } from './admin-pricing.controller';
+import { adminRankingController } from './admin-ranking.controller';
 import { authenticate, authorize } from '../../middlewares/auth';
 
 const router = Router();
@@ -56,5 +57,12 @@ router.get('/reports', adminController.getReports.bind(adminController));
 // SRD subscription Phase A — pricing plan admin
 router.get('/pricing-plans', adminPricingController.list.bind(adminPricingController));
 router.patch('/pricing-plans/:id', adminPricingController.update.bind(adminPricingController));
+
+// SRD subscription Phase C — WDRS weights + feature flags + premium-gate status
+router.get('/wdrs-config', adminRankingController.getConfig.bind(adminRankingController));
+router.patch('/wdrs-config', adminRankingController.updateConfig.bind(adminRankingController));
+router.get('/feature-flags', adminRankingController.listFlags.bind(adminRankingController));
+router.patch('/feature-flags/:key', adminRankingController.updateFlag.bind(adminRankingController));
+router.get('/premium-gate', adminRankingController.premiumGateStatus.bind(adminRankingController));
 
 export default router;

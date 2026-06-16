@@ -55,6 +55,10 @@ export interface IPersonalInfo {
   whatsapp?: string;
 }
 
+// SSD §1.2 WDRS — curricula the teacher has experience teaching.
+// Reuses the same enum as SchoolProfile.curriculum.
+export type TeacherCurriculum = 'saudi' | 'british' | 'american' | 'ib' | 'cambridge' | 'other';
+
 export interface IProfessionalInfo {
   subjects: Subject[];
   gradeLevels: GradeLevel[];
@@ -63,6 +67,9 @@ export interface IProfessionalInfo {
   // Only meaningful when employmentStatus === 'employed' (SRD 2.2.2).
   // Days of notice the teacher must give their current employer.
   noticePeriodDays?: number;
+  // SSD §1.2 — curricula the teacher has taught; feeds the WDRS "Curriculum
+  // Experience" factor (35% weight by default). Optional; empty = 0 score.
+  curriculaTaught?: TeacherCurriculum[];
 }
 
 export interface IEducation {
@@ -192,6 +199,12 @@ const professionalInfoSchema = new Schema<IProfessionalInfo>(
       min: 0,
       max: 180,
     },
+    curriculaTaught: [
+      {
+        type: String,
+        enum: ['saudi', 'british', 'american', 'ib', 'cambridge', 'other'],
+      },
+    ],
   },
   { _id: false },
 );

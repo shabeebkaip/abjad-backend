@@ -9,15 +9,144 @@ import { Interview } from '../../models/interview.model';
 import { Offer } from '../../models/offer.model';
 import Shortlist from '../../models/shortlist.model';
 import CandidateNote from '../../models/candidate-note.model';
+import User from '../../models/user.model';
+import { Subscription, ISubscription } from '../../models/subscription.model';
+import {
+  computeWDRS, getWDRSConfig, applyPremiumPoolOrdering, isTeacherPremiumGateOpen,
+  ActivitySignals, WDRSBreakdown, TeacherForRanking,
+} from '../ranking/ranking.service';
+
+// A teacher-profile row decorated with WDRS data for candidate-search responses.
+export type RankedTeacher = ITeacherProfileDocument & {
+  wdrs?: WDRSBreakdown;
+  isPremium?: boolean;
+};
 
 export class SchoolCandidatesService {
   async searchCandidates(
     filters: CandidateSearchFilters
-  ): Promise<{ teachers: ITeacherProfileDocument[]; total: number; page: number; totalPages: number }> {
+  ): Promise<{ teachers: RankedTeacher[]; total: number; page: number; totalPages: number }> {
     const page = filters.page ?? 1;
     const limit = filters.limit ?? 20;
-    const { teachers, total } = await schoolCandidatesRepository.search(filters);
-    return { teachers, total, page, totalPages: Math.ceil(total / limit) };
+
+    // SSD §3.3.4 — default to "Best Match" (WDRS) ordering.
+    const sortBy = filters.sortBy ?? 'best_match';
+
+    if (sortBy !== 'best_match') {
+      const { teachers, total } = await schoolCandidatesRepository.search({ ...filters, sortBy });
+      return {
+        teachers: teachers as RankedTeacher[],
+        total,
+        page,
+        totalPages: Math.ceil(total / limit),
+      };
+    }
+
+    // WDRS path — fetch the filtered set (capped), decorate, sort, paginate.
+    const allMatches = await schoolCandidatesRepository.findAllForRanking(filters);
+    const ranked = await this._rankCandidates(allMatches);
+    const total = ranked.length;
+    const start = (page - 1) * limit;
+    const sliced = ranked.slice(start, start + limit);
+
+    return {
+      teachers: sliced,
+      total,
+      page,
+      totalPages: Math.ceil(total / limit) || 1,
+    };
+  }
+
+  /**
+   * Decorates a list of teacher profiles with WDRS scores + isPremium and
+   * returns them ordered per SSD §1.2 (premium pool above standard,
+   * 5-pt score bands within each pool, daily rotation within band).
+   */
+  private async _rankCandidates(profiles: ITeacherProfileDocument[]): Promise<RankedTeacher[]> {
+    if (profiles.length === 0) return [];
+
+    const [weights, premiumGate, batchedSignals] = await Promise.all([
+      getWDRSConfig(),
+      isTeacherPremiumGateOpen(),
+      this._batchActivitySignals(profiles),
+    ]);
+
+    const { subByUser, activityById } = batchedSignals;
+
+    const decorated: RankedTeacher[] = profiles.map((p) => {
+      const userId = p.userId.toString();
+      const sub = subByUser.get(userId) ?? null;
+      const activity = activityById.get(userId) ?? {
+        invitationsReceived: 0,
+        invitationsAccepted: 0,
+      };
+      // Narrow the document down to just the fields the ranker reads —
+      // avoids ITeacherProfile._id (string) vs Document._id (ObjectId) conflicts.
+      const wdrsInput: Partial<TeacherForRanking> = {
+        professional: p.professional,
+        education: p.education,
+        certifications: p.certifications,
+      };
+      const wdrs = computeWDRS(wdrsInput, sub, activity, weights);
+      // Premium pool participation is gated by the activation flag (SSD §1.3:
+      // not active until 30 verified profiles exist).
+      const isPremium = premiumGate && !!sub
+        && (sub.status === 'active' || sub.status === 'trialing' || sub.status === 'past_due');
+      const r: RankedTeacher = p as RankedTeacher;
+      r.wdrs = wdrs;
+      r.isPremium = isPremium;
+      return r;
+    });
+
+    // Apply premium-pool ordering with 5-pt bands + daily rotation.
+    const rankInputs = decorated.map((d) => ({
+      teacherId: d.userId.toString(),
+      wdrs: d.wdrs!.total,
+      isPremium: !!d.isPremium,
+      __ref: d,
+    }));
+    const ordered = applyPremiumPoolOrdering(rankInputs);
+    return ordered.map((r) => r.__ref);
+  }
+
+  /**
+   * Batch loads the activity signals each WDRS calc needs:
+   *   - active Subscription per teacher (for tier scoring + premium pool)
+   *   - User.lastLoginAt (for recency scoring)
+   *   - Interview accept-rate (TODO: deferred — populated as zeros for v1)
+   */
+  private async _batchActivitySignals(profiles: ITeacherProfileDocument[]): Promise<{
+    subByUser: Map<string, ISubscription>;
+    activityById: Map<string, ActivitySignals>;
+  }> {
+    const userIds = profiles.map((p) => p.userId);
+
+    const [users, subs] = await Promise.all([
+      User.find({ _id: { $in: userIds } }).select('_id lastLoginAt').lean(),
+      Subscription.find({
+        ownerId: { $in: userIds },
+        ownerType: 'teacher',
+        status: { $in: ['active', 'trialing', 'past_due'] },
+      }).lean(),
+    ]);
+
+    const subByUser = new Map<string, ISubscription>();
+    for (const s of subs) {
+      subByUser.set(s.ownerId.toString(), s as unknown as ISubscription);
+    }
+
+    const activityById = new Map<string, ActivitySignals>();
+    for (const u of users) {
+      const id = (u._id as { toString(): string }).toString();
+      activityById.set(id, {
+        lastLoginAt: u.lastLoginAt,
+        // TODO Phase C+: aggregate Interview model invite counts per teacher.
+        invitationsReceived: 0,
+        invitationsAccepted: 0,
+      });
+    }
+
+    return { subByUser, activityById };
   }
 
   async getCandidateProfile(teacherId: string): Promise<ITeacherProfileDocument> {

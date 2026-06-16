@@ -40,7 +40,7 @@ export class SchoolCandidatesController {
         employmentStatus: employmentStatus as string,
         certificationsKeyword: certificationsKeyword as string,
         salaryMaxAcceptable: salaryMaxAcceptable ? Number(salaryMaxAcceptable) : undefined,
-        sortBy: sortBy as 'newest' | 'completion',
+        sortBy: sortBy as 'best_match' | 'newest' | 'completion',
         page: effectivePage,
         limit: effectiveLimit,
       });

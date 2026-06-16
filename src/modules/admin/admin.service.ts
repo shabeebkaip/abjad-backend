@@ -137,6 +137,17 @@ export class AdminService {
     if (teacher.profileStatus === 'approved') throw AppError.badRequest('Teacher is already approved');
     const updated = await adminRepository.approveTeacher(profileId, adminNotes);
 
+    // SSD §1.3 — when an approval pushes us across the 30-verified threshold,
+    // auto-flip the teacher_premium_enabled feature flag. Idempotent.
+    void (async () => {
+      try {
+        const { checkAndFlipPremiumGate } = await import('../ranking/ranking.service');
+        await checkAndFlipPremiumGate();
+      } catch {
+        // best-effort; don't fail approval if the gate check throws
+      }
+    })();
+
     void (async () => {
       const user = await User.findById(teacher.userId).select('email emailNotificationsEnabled').lean();
       if (!user?.emailNotificationsEnabled || !user.email) return;
