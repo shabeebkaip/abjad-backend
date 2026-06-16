@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { adminController } from './admin.controller';
+import { adminPricingController } from './admin-pricing.controller';
 import { authenticate, authorize } from '../../middlewares/auth';
 
 const router = Router();
@@ -51,5 +52,9 @@ router.patch('/jobs/:jobId/status', adminController.updateJobStatus.bind(adminCo
 // Reports & analytics
 router.get('/reports/generate', adminController.generateReport.bind(adminController));
 router.get('/reports', adminController.getReports.bind(adminController));
+
+// SRD subscription Phase A — pricing plan admin
+router.get('/pricing-plans', adminPricingController.list.bind(adminPricingController));
+router.patch('/pricing-plans/:id', adminPricingController.update.bind(adminPricingController));
 
 export default router;
