@@ -22,6 +22,8 @@ import adminRoutes from '../modules/admin/admin.routes';
 import internalRoutes from '../modules/internal/internal.routes';
 import subscriptionsRoutes from '../modules/subscriptions/subscriptions.routes';
 import { subscriptionsController } from '../modules/subscriptions/subscriptions.controller';
+import paymentsRoutes from '../modules/payments/payments.routes';
+import { paymentsController } from '../modules/payments/payments.controller';
 import { authenticate } from '../middlewares/auth';
 
 const router: Router = Router();
@@ -79,6 +81,11 @@ router.use('/admin', adminRoutes);
 router.use('/subscriptions', subscriptionsRoutes);
 // Public catalogue of pricing plans — needs auth, not gated by role.
 router.get('/pricing-plans', authenticate, subscriptionsController.listPublicPlans.bind(subscriptionsController));
+
+// Payments (Phase D) — initiate, webhook, receipt
+router.use('/payments', paymentsRoutes);
+router.get('/invoices', authenticate, paymentsController.listMine.bind(paymentsController));
+router.get('/invoices/:id/receipt', authenticate, paymentsController.receipt.bind(paymentsController));
 
 // Internal — cron-triggered jobs (gated by CRON_SECRET in prod)
 router.use('/internal', internalRoutes);

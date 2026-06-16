@@ -76,4 +76,26 @@ export const config = {
     password: process.env.EMAIL_PASSWORD,
     from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
   },
+
+  // Payments — Moyasar (Phase D). Test keys live in .env, never committed.
+  // Get yours at https://dashboard.moyasar.com/ → Settings → API Keys.
+  // The webhook secret comes from Settings → Webhooks → "Add Webhook" (Moyasar
+  // returns the secret once on creation — store immediately).
+  moyasar: {
+    publishableKey: process.env.MOYASAR_PUBLISHABLE_KEY || '',
+    secretKey:      process.env.MOYASAR_SECRET_KEY      || '',
+    webhookSecret:  process.env.MOYASAR_WEBHOOK_SECRET  || '',
+    apiBase:        process.env.MOYASAR_API_BASE        || 'https://api.moyasar.com/v1',
+  },
+
+  // Abjad seller block (snapshotted onto every invoice per ZATCA's invoice
+  // fields — even though ZATCA submission is deferred, we collect the data
+  // now so the Phase E swap is a code change, not a data backfill).
+  seller: {
+    nameEn:    process.env.SELLER_NAME_EN    || 'Abjad Platform',
+    nameAr:    process.env.SELLER_NAME_AR    || 'منصة أبجد',
+    vatNumber: process.env.SELLER_VAT_NUMBER || '',  // 15-digit ZATCA VAT
+    crNumber:  process.env.SELLER_CR_NUMBER  || '',
+    address:   process.env.SELLER_ADDRESS    || 'Riyadh, Saudi Arabia',
+  },
 };

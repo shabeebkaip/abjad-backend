@@ -109,8 +109,11 @@ const invoiceSchema = new Schema<IInvoice>(
 
     sellerNameEn: { type: String, required: true },
     sellerNameAr: { type: String, required: true },
-    sellerVatNumber: { type: String, required: true },
-    sellerCrNumber: { type: String, required: true },
+    // VAT + CR are required for ZATCA-compliant invoicing (Phase E). In dev /
+    // before company registration they can be empty; the ZATCA submitter will
+    // refuse to submit invoices without them.
+    sellerVatNumber: { type: String, default: '' },
+    sellerCrNumber: { type: String, default: '' },
     sellerAddress: { type: String, required: true },
 
     buyerName: { type: String, required: true },

@@ -30,8 +30,15 @@ const limiter = rateLimit({
 });
 app.use('/api', limiter);
 
-// Body parsing middleware
-app.use(express.json({ limit: '10mb' }));
+// Body parsing middleware. We capture the raw JSON body on every request so
+// HMAC signature verification (e.g. Moyasar webhooks) can compute the digest
+// against the bytes Moyasar actually signed, not a re-stringification.
+app.use(express.json({
+  limit: '10mb',
+  verify: (req, _res, buf) => {
+    (req as typeof req & { rawBody?: string }).rawBody = buf.toString('utf8');
+  },
+}));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
 app.use(compression());

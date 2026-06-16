@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { adminController } from './admin.controller';
 import { adminPricingController } from './admin-pricing.controller';
 import { adminRankingController } from './admin-ranking.controller';
+import { adminPaymentsController } from './admin-payments.controller';
 import { authenticate, authorize } from '../../middlewares/auth';
 
 const router = Router();
@@ -64,5 +65,13 @@ router.patch('/wdrs-config', adminRankingController.updateConfig.bind(adminRanki
 router.get('/feature-flags', adminRankingController.listFlags.bind(adminRankingController));
 router.patch('/feature-flags/:key', adminRankingController.updateFlag.bind(adminRankingController));
 router.get('/premium-gate', adminRankingController.premiumGateStatus.bind(adminRankingController));
+
+// SRD subscription Phase D — invoices, payments, ledger, subscriptions, bank-transfer admin
+router.get('/invoices', adminPaymentsController.listInvoices.bind(adminPaymentsController));
+router.get('/invoices/:id/receipt', adminPaymentsController.receipt.bind(adminPaymentsController));
+router.post('/invoices/:id/mark-paid', adminPaymentsController.markInvoicePaid.bind(adminPaymentsController));
+router.get('/payments', adminPaymentsController.listPayments.bind(adminPaymentsController));
+router.get('/subscriptions', adminPaymentsController.listSubscriptions.bind(adminPaymentsController));
+router.get('/ledger/:ownerId', adminPaymentsController.ownerLedger.bind(adminPaymentsController));
 
 export default router;
