@@ -3,6 +3,7 @@ import { adminController } from './admin.controller';
 import { adminPricingController } from './admin-pricing.controller';
 import { adminRankingController } from './admin-ranking.controller';
 import { adminPaymentsController } from './admin-payments.controller';
+import { auditController } from '../audit/audit.controller';
 import { authenticate, authorize } from '../../middlewares/auth';
 
 const router = Router();
@@ -65,6 +66,10 @@ router.patch('/wdrs-config', adminRankingController.updateConfig.bind(adminRanki
 router.get('/feature-flags', adminRankingController.listFlags.bind(adminRankingController));
 router.patch('/feature-flags/:key', adminRankingController.updateFlag.bind(adminRankingController));
 router.get('/premium-gate', adminRankingController.premiumGateStatus.bind(adminRankingController));
+
+// Tier 1 #1 — Admin audit log (append-only, immutable history of every state-changing action)
+router.get('/audit-log', auditController.list.bind(auditController));
+router.get('/audit-log/target/:type/:id', auditController.forTarget.bind(auditController));
 
 // SRD subscription Phase D — invoices, payments, ledger, subscriptions, bank-transfer admin
 router.get('/invoices', adminPaymentsController.listInvoices.bind(adminPaymentsController));

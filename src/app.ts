@@ -8,9 +8,14 @@ import rateLimit from 'express-rate-limit';
 import routes from './routes';
 import { errorHandler } from './middlewares/errorHandler';
 import { notFound } from './middlewares/notFound';
+import { requestId } from './middlewares/request-id';
 import { config } from './config';
 
 const app: Application = express();
+
+// Assign a request id to every inbound request so audit log entries + error
+// logs share a correlation key. Must come BEFORE any logging or routing.
+app.use(requestId);
 
 // Security middleware
 app.use(helmet({

@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { AuthRequest } from '../../middlewares/auth';
 import { adminService } from './admin.service';
+import { auditService, actorFromRequest } from '../audit/audit.service';
 
 class AdminController {
   // POST /admin/auth/login
@@ -49,7 +50,17 @@ class AdminController {
   // POST /admin/schools/:profileId/approve
   async approveSchool(req: AuthRequest, res: Response, next: NextFunction) {
     try {
-      const school = await adminService.approveSchool(req.params['profileId'] as string, req.body.adminNotes);
+      const profileId = req.params['profileId'] as string;
+      const school = await adminService.approveSchool(profileId, req.body.adminNotes);
+      void auditService.record({
+        actor: actorFromRequest(req),
+        action: 'school.approve',
+        targetType: 'SchoolProfile',
+        targetId: profileId,
+        targetLabel: school?.nameEn ?? school?.nameAr,
+        notes: req.body.adminNotes,
+        req,
+      });
       res.json({ success: true, message: 'School verified successfully', data: school });
     } catch (err) { next(err); }
   }
@@ -58,7 +69,18 @@ class AdminController {
   async rejectSchool(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { rejectionReason, adminNotes } = req.body;
-      const school = await adminService.rejectSchool(req.params['profileId'] as string, rejectionReason, adminNotes);
+      const profileId = req.params['profileId'] as string;
+      const school = await adminService.rejectSchool(profileId, rejectionReason, adminNotes);
+      void auditService.record({
+        actor: actorFromRequest(req),
+        action: 'school.reject',
+        targetType: 'SchoolProfile',
+        targetId: profileId,
+        targetLabel: school?.nameEn ?? school?.nameAr,
+        reason: rejectionReason,
+        notes: adminNotes,
+        req,
+      });
       res.json({ success: true, message: 'School rejected', data: school });
     } catch (err) { next(err); }
   }
@@ -89,7 +111,17 @@ class AdminController {
   // POST /admin/teachers/:profileId/approve
   async approveTeacher(req: AuthRequest, res: Response, next: NextFunction) {
     try {
-      const teacher = await adminService.approveTeacher(req.params['profileId'] as string, req.body.adminNotes);
+      const profileId = req.params['profileId'] as string;
+      const teacher = await adminService.approveTeacher(profileId, req.body.adminNotes);
+      void auditService.record({
+        actor: actorFromRequest(req),
+        action: 'teacher.approve',
+        targetType: 'TeacherProfile',
+        targetId: profileId,
+        targetLabel: teacher?.personal?.fullNameEn ?? teacher?.personal?.fullNameAr,
+        notes: req.body.adminNotes,
+        req,
+      });
       res.json({ success: true, message: 'Teacher approved successfully', data: teacher });
     } catch (err) { next(err); }
   }
@@ -98,7 +130,18 @@ class AdminController {
   async rejectTeacher(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { rejectionReason, adminNotes } = req.body;
-      const teacher = await adminService.rejectTeacher(req.params['profileId'] as string, rejectionReason, adminNotes);
+      const profileId = req.params['profileId'] as string;
+      const teacher = await adminService.rejectTeacher(profileId, rejectionReason, adminNotes);
+      void auditService.record({
+        actor: actorFromRequest(req),
+        action: 'teacher.reject',
+        targetType: 'TeacherProfile',
+        targetId: profileId,
+        targetLabel: teacher?.personal?.fullNameEn ?? teacher?.personal?.fullNameAr,
+        reason: rejectionReason,
+        notes: adminNotes,
+        req,
+      });
       res.json({ success: true, message: 'Teacher rejected', data: teacher });
     } catch (err) { next(err); }
   }
@@ -182,7 +225,19 @@ class AdminController {
   // DELETE /admin/teachers/:profileId
   async deleteTeacher(req: AuthRequest, res: Response, next: NextFunction) {
     try {
-      await adminService.deleteTeacher(req.params['profileId'] as string);
+      const profileId = req.params['profileId'] as string;
+      // Snapshot the teacher BEFORE delete so the audit entry has a label.
+      const before = await adminService.getTeacher(profileId).catch(() => null);
+      await adminService.deleteTeacher(profileId);
+      void auditService.record({
+        actor: actorFromRequest(req),
+        action: 'teacher.delete',
+        targetType: 'TeacherProfile',
+        targetId: profileId,
+        targetLabel: before?.personal?.fullNameEn ?? before?.personal?.fullNameAr,
+        before,
+        req,
+      });
       res.json({ success: true, message: 'Teacher deleted successfully' });
     } catch (err) { next(err); }
   }
@@ -190,7 +245,18 @@ class AdminController {
   // DELETE /admin/schools/:profileId
   async deleteSchool(req: AuthRequest, res: Response, next: NextFunction) {
     try {
-      await adminService.deleteSchool(req.params['profileId'] as string);
+      const profileId = req.params['profileId'] as string;
+      const before = await adminService.getSchool(profileId).catch(() => null);
+      await adminService.deleteSchool(profileId);
+      void auditService.record({
+        actor: actorFromRequest(req),
+        action: 'school.delete',
+        targetType: 'SchoolProfile',
+        targetId: profileId,
+        targetLabel: before?.nameEn ?? before?.nameAr,
+        before,
+        req,
+      });
       res.json({ success: true, message: 'School deleted successfully' });
     } catch (err) { next(err); }
   }
@@ -206,11 +272,20 @@ class AdminController {
   // POST /admin/tickets/:ticketId/reply
   async replyToTicket(req: AuthRequest, res: Response, next: NextFunction) {
     try {
+      const ticketId = req.params['ticketId'] as string;
       const ticket = await adminService.replyToTicket(
-        req.params['ticketId'] as string,
+        ticketId,
         req.user!.userId,
         req.body.content,
       );
+      void auditService.record({
+        actor: actorFromRequest(req),
+        action: 'ticket.reply',
+        targetType: 'Ticket',
+        targetId: ticketId,
+        notes: req.body.content?.slice(0, 200),
+        req,
+      });
       res.json({ success: true, data: ticket });
     } catch (err) { next(err); }
   }
@@ -218,10 +293,16 @@ class AdminController {
   // PATCH /admin/tickets/:ticketId/status
   async updateTicketStatus(req: AuthRequest, res: Response, next: NextFunction) {
     try {
-      const ticket = await adminService.updateTicketStatus(
-        req.params['ticketId'] as string,
-        req.body.status,
-      );
+      const ticketId = req.params['ticketId'] as string;
+      const ticket = await adminService.updateTicketStatus(ticketId, req.body.status);
+      void auditService.record({
+        actor: actorFromRequest(req),
+        action: 'ticket.status_change',
+        targetType: 'Ticket',
+        targetId: ticketId,
+        after: { status: req.body.status },
+        req,
+      });
       res.json({ success: true, data: ticket });
     } catch (err) { next(err); }
   }
@@ -244,10 +325,17 @@ class AdminController {
   // PATCH /admin/jobs/:jobId/status
   async updateJobStatus(req: AuthRequest, res: Response, next: NextFunction) {
     try {
-      const job = await adminService.updateJobStatus(
-        req.params['jobId'] as string,
-        req.body.status,
-      );
+      const jobId = req.params['jobId'] as string;
+      const job = await adminService.updateJobStatus(jobId, req.body.status);
+      void auditService.record({
+        actor: actorFromRequest(req),
+        action: 'job.moderate',
+        targetType: 'Job',
+        targetId: jobId,
+        targetLabel: job?.title,
+        after: { status: req.body.status },
+        req,
+      });
       res.json({ success: true, data: job });
     } catch (err) { next(err); }
   }

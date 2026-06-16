@@ -3,6 +3,7 @@ import { AuthRequest } from '../../middlewares/auth';
 import { PricingPlan } from '../../models/pricing-plan.model';
 import { AppError } from '../../utils/app-error.util';
 import { sarToHalala } from '../../utils/money.util';
+import { auditService, actorFromRequest } from '../audit/audit.service';
 
 export class AdminPricingController {
   async list(_req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
@@ -33,6 +34,14 @@ export class AdminPricingController {
       const plan = await PricingPlan.findById(id);
       if (!plan) throw AppError.notFound('Pricing plan not found');
 
+      // Snapshot for audit
+      const beforeSnapshot = {
+        priceHalala: plan.priceHalala,
+        nameEn: plan.nameEn,
+        nameAr: plan.nameAr,
+        isActive: plan.isActive,
+      };
+
       if (priceHalala != null) {
         if (!Number.isInteger(priceHalala) || priceHalala < 0) {
           throw AppError.badRequest('priceHalala must be a non-negative integer');
@@ -52,6 +61,21 @@ export class AdminPricingController {
       }
 
       await plan.save();
+      void auditService.record({
+        actor: actorFromRequest(req),
+        action: 'plan.update',
+        targetType: 'PricingPlan',
+        targetId: String(id),
+        targetLabel: plan.code,
+        before: beforeSnapshot,
+        after: {
+          priceHalala: plan.priceHalala,
+          nameEn: plan.nameEn,
+          nameAr: plan.nameAr,
+          isActive: plan.isActive,
+        },
+        req,
+      });
       res.json({ success: true, data: plan });
     } catch (err) {
       next(err);

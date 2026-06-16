@@ -11,6 +11,7 @@ import { Subscription } from '../../models/subscription.model';
 import { paymentsService } from '../payments/payments.service';
 import { renderInvoicePdf } from '../../utils/receipt-pdf.util';
 import { AppError } from '../../utils/app-error.util';
+import { auditService, actorFromRequest } from '../audit/audit.service';
 
 export class AdminPaymentsController {
   /** GET /api/admin/invoices?status=&ownerType=&ownerId=&page=&limit= */
@@ -96,10 +97,21 @@ export class AdminPaymentsController {
     try {
       const { bankReference } = req.body as { bankReference?: string };
       if (!bankReference?.trim()) throw AppError.badRequest('bankReference is required');
+      const invoiceId = String(req.params.id);
+      const invoice = await Invoice.findById(invoiceId).lean();
       const result = await paymentsService.markBankTransferPaid({
-        invoiceId: String(req.params.id),
+        invoiceId,
         bankReference: bankReference.trim(),
         adminUserId: req.user!.userId,
+      });
+      void auditService.record({
+        actor: actorFromRequest(req),
+        action: 'invoice.mark_paid',
+        targetType: 'Invoice',
+        targetId: invoiceId,
+        targetLabel: invoice?.number,
+        notes: `Bank reference: ${bankReference.trim()}`,
+        req,
       });
       res.json({ success: true, data: result });
     } catch (err) {

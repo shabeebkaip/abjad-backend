@@ -10,6 +10,7 @@ import {
   PREMIUM_GATE_MIN_VERIFIED,
 } from '../ranking/ranking.service';
 import { AppError } from '../../utils/app-error.util';
+import { auditService, actorFromRequest } from '../audit/audit.service';
 
 const ALLOWED_NUMERIC_FIELDS = [
   'curriculumMax', 'qualificationsMax', 'subscriptionMax', 'activityMax',
@@ -63,10 +64,20 @@ export class AdminRankingController {
         );
       }
 
+      const beforeSnapshot = { ...doc.toObject(), _id: undefined, __v: undefined };
       Object.assign(doc, updates);
       doc.updatedBy = req.user?.userId ? (req.user.userId as unknown as typeof doc.updatedBy) : undefined;
       await doc.save();
       invalidateWDRSConfigCache();
+      void auditService.record({
+        actor: actorFromRequest(req),
+        action: 'wdrs.update',
+        targetType: 'WDRSConfig',
+        targetId: (doc._id as { toString(): string }).toString(),
+        before: beforeSnapshot,
+        after: updates,
+        req,
+      });
       res.json({ success: true, data: doc });
     } catch (err) {
       next(err);
@@ -97,6 +108,7 @@ export class AdminRankingController {
       if (typeof value !== 'boolean') {
         throw AppError.badRequest('value must be boolean');
       }
+      const prior = await FeatureFlag.findOne({ key }).lean();
       if (key === PREMIUM_GATE_FLAG_KEY) {
         await setPremiumGate(value, req.user?.userId);
       } else {
@@ -107,6 +119,16 @@ export class AdminRankingController {
         );
       }
       const flag = await FeatureFlag.findOne({ key });
+      void auditService.record({
+        actor: actorFromRequest(req),
+        action: 'feature_flag.toggle',
+        targetType: 'FeatureFlag',
+        targetId: flag ? (flag._id as { toString(): string }).toString() : undefined,
+        targetLabel: String(key),
+        before: { value: prior?.value ?? false },
+        after: { value },
+        req,
+      });
       res.json({ success: true, data: flag });
     } catch (err) {
       next(err);
