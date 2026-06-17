@@ -10,7 +10,11 @@
     "vercel-build": "tsc",
     "test": "jest --forceExit --detectOpenHandles",
     "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage"
+    "test:coverage": "jest --coverage",
+    "seed:plans": "ts-node --transpile-only scripts/seed-pricing-plans.ts",
+    "seed:admin": "ts-node --transpile-only scripts/seed-admin.ts",
+    "seed:jobs": "ts-node --transpile-only scripts/seed-jobs.ts",
+    "seed:applications": "ts-node --transpile-only scripts/seed-applications.ts"
   },
   "repository": {
     "type": "git",
