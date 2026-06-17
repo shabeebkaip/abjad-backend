@@ -14,7 +14,8 @@
     "seed:plans": "ts-node --transpile-only scripts/seed-pricing-plans.ts",
     "seed:admin": "ts-node --transpile-only scripts/seed-admin.ts",
     "seed:jobs": "ts-node --transpile-only scripts/seed-jobs.ts",
-    "seed:applications": "ts-node --transpile-only scripts/seed-applications.ts"
+    "seed:applications": "ts-node --transpile-only scripts/seed-applications.ts",
+    "seed:billing": "ts-node --transpile-only scripts/seed-billing.ts"
   },
   "repository": {
     "type": "git",
