@@ -5,6 +5,7 @@ import { adminRankingController } from './admin-ranking.controller';
 import { adminPaymentsController } from './admin-payments.controller';
 import { auditController } from '../audit/audit.controller';
 import { queueController } from '../queue/queue.controller';
+import { suspensionController } from '../suspension/suspension.controller';
 import { authenticate, authorize } from '../../middlewares/auth';
 
 const router = Router();
@@ -39,9 +40,19 @@ router.get('/teachers/:profileId/activity', adminController.getTeacherActivity.b
 router.get('/teachers/:profileId/history', adminController.getTeacherHistory.bind(adminController));
 router.delete('/teachers/:profileId', adminController.deleteTeacher.bind(adminController));
 
+// Tier 1 #6 — Teacher suspension + history
+router.post('/teachers/:profileId/suspend',   suspensionController.suspendTeacher.bind(suspensionController));
+router.post('/teachers/:profileId/reinstate', suspensionController.reinstateTeacher.bind(suspensionController));
+router.get('/teachers/:profileId/suspensions', suspensionController.teacherHistory.bind(suspensionController));
+
 // School activity + deletion
 router.get('/schools/:profileId/activity', adminController.getSchoolActivity.bind(adminController));
 router.delete('/schools/:profileId', adminController.deleteSchool.bind(adminController));
+
+// Tier 1 #6 — School suspension + history
+router.post('/schools/:profileId/suspend',    suspensionController.suspendSchool.bind(suspensionController));
+router.post('/schools/:profileId/reinstate',  suspensionController.reinstateSchool.bind(suspensionController));
+router.get('/schools/:profileId/suspensions', suspensionController.schoolHistory.bind(suspensionController));
 
 // Interviews
 router.get('/interviews', adminController.listInterviews.bind(adminController));

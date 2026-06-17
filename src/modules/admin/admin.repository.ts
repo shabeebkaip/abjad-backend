@@ -127,6 +127,24 @@ export class AdminRepository {
     );
   }
 
+  // ── Suspension / Reinstatement (Tier 1 #6) ───────────────
+
+  async setTeacherStatus(profileId: string, profileStatus: string) {
+    return TeacherProfile.findByIdAndUpdate(
+      profileId,
+      { $set: { profileStatus } },
+      { new: true },
+    );
+  }
+
+  async setSchoolStatus(profileId: string, profileStatus: string) {
+    return SchoolProfile.findByIdAndUpdate(
+      profileId,
+      { $set: { profileStatus } },
+      { new: true },
+    );
+  }
+
   // ── Dashboard charts ──────────────────────────────────────
 
   /**
