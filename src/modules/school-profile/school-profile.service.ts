@@ -2,6 +2,7 @@ import { ISchoolProfileDocument } from '../../models/school-profile.model';
 import { schoolProfileRepository } from './school-profile.repository';
 import { uploadToCloudinary, deleteFromCloudinary } from '../../utils/cloudinary.util';
 import { AppError } from '../../utils/app-error.util';
+import { notificationsService } from '../notifications/notifications.service';
 
 function calculateCompletion(profile: ISchoolProfileDocument): number {
   let score = 0;
@@ -193,6 +194,16 @@ export class SchoolProfileService {
 
     const updated = await schoolProfileRepository.submitForVerification(userId);
     if (!updated) throw AppError.notFound('Profile not found');
+
+    // Tier 2 #11 — admin fan-out for the bell + queue.
+    const name = updated.nameEn ?? updated.nameAr ?? 'A school';
+    void notificationsService.notifyAllAdmins(
+      'system',
+      'New school pending verification',
+      `${name} submitted their profile for verification.`,
+      { schoolProfileId: String(updated._id), targetType: 'SchoolProfile' },
+    );
+
     return updated;
   }
 }

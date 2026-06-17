@@ -5,6 +5,7 @@ import { AppError } from '../../utils/app-error.util';
 import User from '../../models/user.model';
 import { sendEmail } from '../../utils/email.util';
 import { tplTicketReceived, tplTicketReplied } from '../../utils/email-templates.util';
+import { notificationsService } from '../notifications/notifications.service';
 
 export class SupportService {
   async createTicket(
@@ -37,6 +38,14 @@ export class SupportService {
       });
       await sendEmail(user.email, subject, html);
     })().catch((err) => console.error('[support] ticket received email failed:', err));
+
+    // Tier 2 #11 — admin fan-out for the bell.
+    void notificationsService.notifyAllAdmins(
+      'system',
+      `New support ticket · ${ticket.priority}`,
+      `${ticket.subject}`,
+      { ticketId: String(ticket._id), targetType: 'Ticket' },
+    );
 
     return ticket;
   }

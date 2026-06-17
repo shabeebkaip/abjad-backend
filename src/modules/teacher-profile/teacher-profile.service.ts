@@ -4,6 +4,7 @@ import { uploadToCloudinary, deleteFromCloudinary } from '../../utils/cloudinary
 import { AppError } from '../../utils/app-error.util';
 import { diffSection, writeChangeLog } from './profile-change-log.util';
 import { ProfileSection } from '../../models/profile-change-log.model';
+import { notificationsService } from '../notifications/notifications.service';
 
 // Convert a mongoose subdoc/array to a plain object for diffing.
 function toPlain<T>(v: T | undefined | null): Record<string, unknown> {
@@ -349,6 +350,16 @@ export class TeacherProfileService {
 
     const updated = await teacherProfileRepository.submitForApproval(userId);
     if (!updated) throw AppError.notFound('Profile not found');
+
+    // Tier 2 #11 — fan out to every admin so the bell + queue surfaces it.
+    const name = updated.personal?.fullNameEn ?? updated.personal?.fullNameAr ?? 'A teacher';
+    void notificationsService.notifyAllAdmins(
+      'system',
+      'New teacher pending review',
+      `${name} submitted their profile for approval.`,
+      { teacherProfileId: String(updated._id), targetType: 'TeacherProfile' },
+    );
+
     return updated;
   }
 }

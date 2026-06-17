@@ -70,6 +70,33 @@ export class NotificationsService {
     return notificationsRepository.create({ userId, type, title, body, data });
   }
 
+  /**
+   * Tier 2 #11 — fan a single notification out to every admin user.
+   * Best-effort: failures are swallowed (no admin getting notified is better
+   * than the submission flow erroring on a transient DB issue).
+   */
+  async notifyAllAdmins(
+    type: NotificationType,
+    title: string,
+    body: string,
+    data?: Record<string, string>,
+  ): Promise<void> {
+    try {
+      const admins = await User.find({ role: 'admin', status: 'active' }).select('_id').lean();
+      if (admins.length === 0) return;
+      await Promise.all(
+        admins.map((a) =>
+          notificationsRepository.create({
+            userId: String(a._id),
+            type, title, body, data,
+          }),
+        ),
+      );
+    } catch {
+      // swallow — admin notification isn't worth failing the parent operation
+    }
+  }
+
   // SRD 2.8.2 — read the user's notification preferences. Returns defaults
   // (everything enabled) if the user record is missing the fields entirely.
   async getPreferences(userId: string): Promise<NotificationPreferencesPayload> {
