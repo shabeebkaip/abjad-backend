@@ -29,6 +29,8 @@ export type AuditAction =
   | 'email_template.update' | 'email_template.reset'
   // Per-document review (Tier 2 #9)
   | 'document.approve' | 'document.reject' | 'document.reset'
+  // Public pricing page (website billing pass)
+  | 'pricing_page.update'
   // Auth
   | 'admin.login' | 'admin.logout'
   // Catch-all

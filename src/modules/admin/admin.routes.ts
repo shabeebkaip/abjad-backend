@@ -9,6 +9,7 @@ import { suspensionController } from '../suspension/suspension.controller';
 import { templateController } from '../email-templates/template.controller';
 import { documentReviewController } from '../document-review/document-review.controller';
 import { activityController } from '../activity/activity.controller';
+import { pricingPageController } from '../pricing-page/pricing-page.controller';
 import { authenticate, authorize } from '../../middlewares/auth';
 
 const router = Router();
@@ -103,6 +104,10 @@ router.get('/pricing-plans', adminPricingController.list.bind(adminPricingContro
 router.patch('/pricing-plans/:id', adminPricingController.update.bind(adminPricingController));
 // Step 1 entitlement registry — UI reads this once to render the per-plan editor.
 router.get('/entitlement-registry', adminPricingController.getRegistry.bind(adminPricingController));
+
+// Website Billing Pass — public pricing page content (per locale)
+router.get('/pricing-page',   pricingPageController.getAdminContent.bind(pricingPageController));
+router.patch('/pricing-page', pricingPageController.updateAdminContent.bind(pricingPageController));
 
 // SRD subscription Phase C — WDRS weights + feature flags + premium-gate status
 router.get('/wdrs-config', adminRankingController.getConfig.bind(adminRankingController));

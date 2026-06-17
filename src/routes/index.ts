@@ -24,6 +24,7 @@ import subscriptionsRoutes from '../modules/subscriptions/subscriptions.routes';
 import { subscriptionsController } from '../modules/subscriptions/subscriptions.controller';
 import paymentsRoutes from '../modules/payments/payments.routes';
 import { paymentsController } from '../modules/payments/payments.controller';
+import { pricingPageController } from '../modules/pricing-page/pricing-page.controller';
 import { authenticate } from '../middlewares/auth';
 
 const router: Router = Router();
@@ -81,6 +82,10 @@ router.use('/admin', adminRoutes);
 router.use('/subscriptions', subscriptionsRoutes);
 // Public catalogue of pricing plans — needs auth, not gated by role.
 router.get('/pricing-plans', authenticate, subscriptionsController.listPublicPlans.bind(subscriptionsController));
+
+// PUBLIC: full pricing-page payload (hero + trust + plans + comparison + FAQ).
+// No auth — drives the marketing /pricing page on abjad-frontend.
+router.get('/pricing/page', pricingPageController.getPublicPayload.bind(pricingPageController));
 
 // Payments (Phase D) — initiate, webhook, receipt
 router.use('/payments', paymentsRoutes);
