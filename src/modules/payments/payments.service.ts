@@ -24,6 +24,7 @@ import { LedgerEntry } from '../../models/ledger-entry.model';
 import { WebhookEvent } from '../../models/webhook-event.model';
 import { schoolProfileRepository } from '../school-profile/school-profile.repository';
 import { subscriptionsService } from '../subscriptions/subscriptions.service';
+import { subscriptionsRepository } from '../subscriptions/subscriptions.repository';
 
 export interface InitiatePaymentResult {
   invoice: IInvoice;
@@ -58,6 +59,20 @@ export class PaymentsService {
     }
     if (plan.type === 'teacher_premium' && user.role !== 'teacher') {
       throw AppError.badRequest('Teacher Premium can only be purchased by teacher accounts');
+    }
+
+    // Duplicate-subscription guard. An owner already with an active/trialing/
+    // past_due subscription cannot start a fresh checkout — they must cancel
+    // or change plan via the management flow first. Belt-and-braces with the
+    // frontend's smart CTA which routes them to /billing instead.
+    const existing = await subscriptionsRepository.findActiveByOwner(params.userId);
+    if (existing) {
+      if (existing.planCode === params.planCode) {
+        throw AppError.conflict('You already have an active subscription on this plan');
+      }
+      throw AppError.conflict(
+        `You already have a ${existing.status} subscription. Cancel or change plan from /billing first.`,
+      );
     }
 
     // Snapshot pricing into the invoice (Phase A money policy).

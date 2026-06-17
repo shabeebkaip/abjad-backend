@@ -3,7 +3,6 @@ import { PricingPlan, IPricingPlan } from '../../models/pricing-plan.model';
 import { PricingPageContent, IPricingPageContent } from '../../models/pricing-page-content.model';
 import { PRICING_PAGE_DEFAULTS } from '../../utils/pricing-page-defaults';
 import {
-  ENTITLEMENT_REGISTRY,
   ENTITLEMENTS_BY_AUDIENCE,
   type EntitlementRegistryEntry,
   type EntitlementBag,
