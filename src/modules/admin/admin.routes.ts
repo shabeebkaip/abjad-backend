@@ -101,6 +101,7 @@ router.get('/invoices', adminPaymentsController.listInvoices.bind(adminPaymentsC
 router.get('/invoices/:id/receipt', adminPaymentsController.receipt.bind(adminPaymentsController));
 router.post('/invoices/:id/mark-paid', adminPaymentsController.markInvoicePaid.bind(adminPaymentsController));
 router.get('/payments', adminPaymentsController.listPayments.bind(adminPaymentsController));
+router.post('/payments/:id/refund', adminPaymentsController.refundPayment.bind(adminPaymentsController));
 router.get('/subscriptions', adminPaymentsController.listSubscriptions.bind(adminPaymentsController));
 router.get('/ledger/:ownerId', adminPaymentsController.ownerLedger.bind(adminPaymentsController));
 

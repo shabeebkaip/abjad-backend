@@ -132,6 +132,39 @@ export class AdminPaymentsController {
       next(err);
     }
   }
+
+  /**
+   * POST /api/admin/payments/:id/refund
+   * Body: { reason }
+   * Tier 2 #13 — full refund (partial refunds deferred to Phase 2).
+   */
+  async refundPayment(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { reason } = req.body as { reason?: string };
+      if (!reason?.trim()) throw AppError.badRequest('Refund reason is required');
+      const paymentId = String(req.params.id);
+
+      const result = await paymentsService.refundPayment({
+        paymentId,
+        adminUserId: req.user!.userId,
+        reason: reason.trim(),
+      });
+
+      void auditService.record({
+        actor: actorFromRequest(req),
+        action: 'payment.refund',
+        targetType: 'Payment',
+        targetId: paymentId,
+        reason: reason.trim(),
+        notes: `Refunded ${result.payment.amountHalala} halala`,
+        req,
+      });
+
+      res.json({ success: true, data: result });
+    } catch (err) {
+      next(err);
+    }
+  }
 }
 
 export const adminPaymentsController = new AdminPaymentsController();

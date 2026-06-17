@@ -272,6 +272,66 @@ export class PaymentsService {
   }
 
   /**
+   * Tier 2 #13 — Issue a full refund for a previously-succeeded payment.
+   *
+   * Side effects (order matters)
+   * 1. Provider refund (Moyasar) — only if the payment has a `moyasarPaymentId`.
+   *    Bank transfers settle off-platform and have no provider id; admin handles
+   *    the bank-side refund externally and we just record it on the ledger.
+   * 2. Payment.status → 'refunded'
+   * 3. LedgerEntry { type: 'refund_issued', direction: 'credit' }
+   *
+   * NOT side effects (deliberately out of scope for Phase 1 — handled manually):
+   *   - Subscription cancellation. Admin should explicitly cancel/pause if the
+   *     refund warrants it; coupling them implicitly is footgun territory.
+   *   - Invoice status. Stays `paid`. The ledger is the source of truth for
+   *     "what was paid and what was returned"; flipping the invoice would lose
+   *     the fact that it WAS paid at some point.
+   *   - Partial refunds. Phase 1 is full-only; partial requires a refundedHalala
+   *     field on the Payment model.
+   */
+  async refundPayment(params: {
+    paymentId: string;
+    adminUserId: string;
+    reason: string;
+  }): Promise<{ payment: IPayment }> {
+    if (!params.reason?.trim()) throw AppError.badRequest('Refund reason is required');
+
+    const payment = await Payment.findById(params.paymentId);
+    if (!payment) throw AppError.notFound('Payment not found');
+    if (payment.status !== 'succeeded') {
+      throw AppError.badRequest(`Cannot refund a payment in status '${payment.status}'`);
+    }
+
+    const invoice = await Invoice.findById(payment.invoiceId);
+    if (!invoice) throw AppError.notFound('Invoice not found for this payment');
+
+    // Provider call FIRST so a 4xx from Moyasar surfaces before we touch state.
+    // Bank transfers have no provider id — refund is off-platform.
+    if (payment.moyasarPaymentId) {
+      const provider = getPaymentProvider();
+      await provider.refundPayment(payment.moyasarPaymentId);
+    }
+
+    payment.status = 'refunded';
+    await payment.save();
+
+    await this._writeLedger({
+      invoiceId: invoice.id as string,
+      paymentId: payment.id as string,
+      ownerType: invoice.ownerType,
+      ownerId: invoice.ownerId.toString(),
+      type: 'refund_issued',
+      direction: 'credit',
+      amountHalala: payment.amountHalala,
+      notes: `Refund: ${params.reason.trim()}`,
+      createdBy: params.adminUserId,
+    });
+
+    return { payment };
+  }
+
+  /**
    * Pull buyer block from school-profile (B2B has VAT number) or fall back to
    * user fields for teachers (B2C, simplified invoice).
    */
