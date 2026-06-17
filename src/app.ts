@@ -27,11 +27,23 @@ app.use(cors({
   credentials: true
 }));
 
-// Rate limiting (disabled in test to avoid 429s during test runs)
+// Rate limiting.
+// - Skipped in test and development so local work / seed scripts / hot
+//   reloads don't trip 429s.
+// - Production: 600 requests / 15 min / IP. The admin dashboard alone
+//   fans out ~10 requests per page navigation; 100/15min (the previous
+//   ceiling) was burning through after a handful of clicks. The auth /
+//   OTP paths have their own tighter limiters in middlewares/rateLimiter.
+// - JSON-shaped response so frontends parsing res.json() don't choke on
+//   the default plain-text "Too many requests..." string.
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100,
-  skip: (_req) => process.env.NODE_ENV === 'test',
+  windowMs: 15 * 60 * 1000,
+  max: 600,
+  skip: (_req) =>
+    process.env.NODE_ENV === 'test' || process.env.NODE_ENV === 'development',
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many requests. Please try again in a few minutes.' },
 });
 app.use('/api', limiter);
 
