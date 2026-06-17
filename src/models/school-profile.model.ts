@@ -6,6 +6,18 @@ export interface IDocument {
   uploadedAt: Date;
 }
 
+// Tier 2 #9 — Per-document approval state (advisory). Mirrors the shape on
+// TeacherProfile so a single review service can manage both audiences.
+export type DocumentReviewStatus = 'pending' | 'approved' | 'rejected';
+
+export interface IDocumentReview {
+  docKey: string;
+  status: DocumentReviewStatus;
+  reason?: string;
+  decidedAt: Date;
+  decidedBy?: mongoose.Types.ObjectId;
+}
+
 export interface IAdminContact {
   name: string;
   jobTitle: string;
@@ -80,6 +92,9 @@ export interface ISchoolProfile {
   verifiedAt?: Date;
 
   completionPercentage: number;
+
+  // Tier 2 #9 — Advisory per-document decisions
+  documentReviews: IDocumentReview[];
 }
 
 export interface ISchoolProfileDocument extends ISchoolProfile, Document {}
@@ -170,6 +185,19 @@ const schoolProfileSchema = new Schema<ISchoolProfileDocument>(
     verifiedAt: { type: Date },
 
     completionPercentage: { type: Number, default: 0, min: 0, max: 100 },
+
+    // Tier 2 #9 — per-document review decisions (advisory)
+    documentReviews: {
+      type: [{
+        docKey:    { type: String, required: true },
+        status:    { type: String, enum: ['pending', 'approved', 'rejected'], required: true },
+        reason:    { type: String, trim: true },
+        decidedAt: { type: Date, default: Date.now },
+        decidedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+        _id: false,
+      }],
+      default: [],
+    },
   },
   { timestamps: true }
 );

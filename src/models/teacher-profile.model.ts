@@ -116,6 +116,19 @@ export interface IResumeInfo {
   uploadedAt?: Date;
 }
 
+// Tier 2 #9 — Per-document approval state (advisory, doesn't gate the overall
+// profile status). Keyed by `docKey`; the inventory builder knows how to
+// resolve a docKey back to the underlying file URL.
+export type DocumentReviewStatus = 'pending' | 'approved' | 'rejected';
+
+export interface IDocumentReview {
+  docKey: string;
+  status: DocumentReviewStatus;
+  reason?: string;
+  decidedAt: Date;
+  decidedBy?: mongoose.Types.ObjectId;
+}
+
 // ─── Main Interface ───────────────────────────────────────────
 
 export interface ITeacherProfile {
@@ -138,6 +151,10 @@ export interface ITeacherProfile {
   rejectionReason?: string;
   submittedAt?: Date;
   approvedAt?: Date;
+
+  // Tier 2 #9 — Advisory per-document decisions. Empty array on a fresh
+  // profile; entries are upserted as admins approve/reject each upload.
+  documentReviews: IDocumentReview[];
 
   createdAt?: Date;
   updatedAt?: Date;
@@ -320,6 +337,19 @@ const teacherProfileSchema = new Schema<ITeacherProfileDocument>(
       default: () => ({ contractTypes: [] }),
     },
     resume: { type: resumeInfoSchema, default: () => ({}) },
+
+    // Tier 2 #9 — per-document review decisions (advisory)
+    documentReviews: {
+      type: [{
+        docKey:    { type: String, required: true },
+        status:    { type: String, enum: ['pending', 'approved', 'rejected'], required: true },
+        reason:    { type: String, trim: true },
+        decidedAt: { type: Date, default: Date.now },
+        decidedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+        _id: false,
+      }],
+      default: [],
+    },
 
     profileStatus: {
       type: String,

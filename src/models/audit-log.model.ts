@@ -27,6 +27,8 @@ export type AuditAction =
   // Content
   | 'job.moderate'
   | 'email_template.update' | 'email_template.reset'
+  // Per-document review (Tier 2 #9)
+  | 'document.approve' | 'document.reject' | 'document.reset'
   // Auth
   | 'admin.login' | 'admin.logout'
   // Catch-all

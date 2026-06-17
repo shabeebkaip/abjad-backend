@@ -7,6 +7,7 @@ import { auditController } from '../audit/audit.controller';
 import { queueController } from '../queue/queue.controller';
 import { suspensionController } from '../suspension/suspension.controller';
 import { templateController } from '../email-templates/template.controller';
+import { documentReviewController } from '../document-review/document-review.controller';
 import { authenticate, authorize } from '../../middlewares/auth';
 
 const router = Router();
@@ -46,6 +47,12 @@ router.post('/teachers/:profileId/suspend',   suspensionController.suspendTeache
 router.post('/teachers/:profileId/reinstate', suspensionController.reinstateTeacher.bind(suspensionController));
 router.get('/teachers/:profileId/suspensions', suspensionController.teacherHistory.bind(suspensionController));
 
+// Tier 2 #9 — Per-document approval (teacher)
+router.get('/teachers/:profileId/documents',                              documentReviewController.list.bind(documentReviewController));
+router.post('/teachers/:profileId/documents/:docKey/approve',             documentReviewController.approve.bind(documentReviewController));
+router.post('/teachers/:profileId/documents/:docKey/reject',              documentReviewController.reject.bind(documentReviewController));
+router.post('/teachers/:profileId/documents/:docKey/reset',               documentReviewController.reset.bind(documentReviewController));
+
 // School activity + deletion
 router.get('/schools/:profileId/activity', adminController.getSchoolActivity.bind(adminController));
 router.delete('/schools/:profileId', adminController.deleteSchool.bind(adminController));
@@ -54,6 +61,12 @@ router.delete('/schools/:profileId', adminController.deleteSchool.bind(adminCont
 router.post('/schools/:profileId/suspend',    suspensionController.suspendSchool.bind(suspensionController));
 router.post('/schools/:profileId/reinstate',  suspensionController.reinstateSchool.bind(suspensionController));
 router.get('/schools/:profileId/suspensions', suspensionController.schoolHistory.bind(suspensionController));
+
+// Tier 2 #9 — Per-document approval (school)
+router.get('/schools/:profileId/documents',                              documentReviewController.list.bind(documentReviewController));
+router.post('/schools/:profileId/documents/:docKey/approve',             documentReviewController.approve.bind(documentReviewController));
+router.post('/schools/:profileId/documents/:docKey/reject',              documentReviewController.reject.bind(documentReviewController));
+router.post('/schools/:profileId/documents/:docKey/reset',               documentReviewController.reset.bind(documentReviewController));
 
 // Interviews
 router.get('/interviews', adminController.listInterviews.bind(adminController));
