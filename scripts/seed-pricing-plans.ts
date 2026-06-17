@@ -59,8 +59,8 @@ async function run() {
     process.exit(1);
   }
 
-  await mongoose.connect(config.mongodbUri);
-  console.log('Connected to', config.mongodbUri);
+  await mongoose.connect(config.mongodb.uri);
+  console.log('Connected to', config.mongodb.uri);
 
   let created = 0;
   let updated = 0;
