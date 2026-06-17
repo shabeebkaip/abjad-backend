@@ -8,6 +8,7 @@ import { queueController } from '../queue/queue.controller';
 import { suspensionController } from '../suspension/suspension.controller';
 import { templateController } from '../email-templates/template.controller';
 import { documentReviewController } from '../document-review/document-review.controller';
+import { activityController } from '../activity/activity.controller';
 import { authenticate, authorize } from '../../middlewares/auth';
 
 const router = Router();
@@ -111,6 +112,10 @@ router.get('/premium-gate', adminRankingController.premiumGateStatus.bind(adminR
 // Tier 1 #1 — Admin audit log (append-only, immutable history of every state-changing action)
 router.get('/audit-log', auditController.list.bind(auditController));
 router.get('/audit-log/target/:type/:id', auditController.forTarget.bind(auditController));
+
+// Tier 3 #24 — Activity Stream + per-admin metrics (read views on AuditLog)
+router.get('/activity-stream', activityController.stream.bind(activityController));
+router.get('/admin-metrics',   activityController.metrics.bind(activityController));
 
 // Tier 1 #2 — Approval Queue (Mission Control)
 router.get('/queue', queueController.list.bind(queueController));
