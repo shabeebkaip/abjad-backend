@@ -65,6 +65,9 @@ router.get('/tickets', adminController.listTickets.bind(adminController));
 router.get('/tickets/:ticketId', adminController.getTicket.bind(adminController));
 router.post('/tickets/:ticketId/reply', adminController.replyToTicket.bind(adminController));
 router.patch('/tickets/:ticketId/status', adminController.updateTicketStatus.bind(adminController));
+// Tier 2 #10 — assign ticket + admin directory for the picker
+router.post('/tickets/:ticketId/assign', adminController.assignTicket.bind(adminController));
+router.get('/admins', adminController.listAdmins.bind(adminController));
 
 // Jobs (content moderation)
 router.get('/jobs', adminController.listJobs.bind(adminController));

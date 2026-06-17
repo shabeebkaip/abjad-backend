@@ -7,6 +7,7 @@ import { Application } from '../../models/application.model';
 import { Interview } from '../../models/interview.model';
 import { Offer } from '../../models/offer.model';
 import { Invoice } from '../../models/invoice.model';
+import User from '../../models/user.model';
 
 function getDateRangeStart(range: string): Date {
   const ms = {
@@ -371,12 +372,18 @@ export class AdminRepository {
   async listAllTickets(filters: {
     status?: string;
     priority?: string;
+    assignee?: string; // ObjectId | 'unassigned' | 'all'
     page: number;
     limit: number;
   }) {
     const query: Record<string, unknown> = {};
-    if (filters.status && filters.status !== 'all') query.status = filters.status;
-    if (filters.priority) query.priority = filters.priority;
+    if (filters.status   && filters.status   !== 'all') query.status   = filters.status;
+    if (filters.priority && filters.priority !== 'all') query.priority = filters.priority;
+    if (filters.assignee === 'unassigned') {
+      query.assignedTo = { $in: [null, undefined] };
+    } else if (filters.assignee && filters.assignee !== 'all' && mongoose.Types.ObjectId.isValid(filters.assignee)) {
+      query.assignedTo = new mongoose.Types.ObjectId(filters.assignee);
+    }
 
     const skip = (filters.page - 1) * filters.limit;
     const [tickets, total] = await Promise.all([
@@ -385,6 +392,7 @@ export class AdminRepository {
         .skip(skip)
         .limit(filters.limit)
         .populate('userId', 'email firstName lastName schoolName role')
+        .populate('assignedTo', 'email firstName lastName')
         .lean(),
       SupportTicket.countDocuments(query),
     ]);
@@ -395,10 +403,18 @@ export class AdminRepository {
   async getTicketById(id: string) {
     return SupportTicket.findById(id)
       .populate('userId', 'email firstName lastName schoolName role')
+      .populate('assignedTo', 'email firstName lastName')
       .lean();
   }
 
   async adminReplyToTicket(ticketId: string, adminId: string, content: string) {
+    // Tier 2 #10 — stamp firstResponseAt on the admin's first reply so the
+    // SLA UI can show "responded in Xh" / "breached by Yh" without scanning
+    // the entire message thread.
+    const existing = await SupportTicket.findById(ticketId).select('firstResponseAt').lean<{ firstResponseAt?: Date } | null>();
+    const $set: Record<string, unknown> = { status: 'in_progress' };
+    if (existing && !existing.firstResponseAt) $set.firstResponseAt = new Date();
+
     return SupportTicket.findByIdAndUpdate(
       ticketId,
       {
@@ -411,17 +427,43 @@ export class AdminRepository {
             timestamp: new Date(),
           },
         },
-        $set: { status: 'in_progress' },
+        $set,
       },
       { new: true },
-    );
+    )
+      .populate('userId', 'email firstName lastName schoolName role')
+      .populate('assignedTo', 'email firstName lastName');
   }
 
   async updateTicketStatus(ticketId: string, status: TicketStatus) {
     const update: Record<string, unknown> = { status };
     if (status === 'resolved') update.resolvedAt = new Date();
     if (status === 'closed')   update.closedAt   = new Date();
-    return SupportTicket.findByIdAndUpdate(ticketId, { $set: update }, { new: true });
+    return SupportTicket.findByIdAndUpdate(ticketId, { $set: update }, { new: true })
+      .populate('userId', 'email firstName lastName schoolName role')
+      .populate('assignedTo', 'email firstName lastName');
+  }
+
+  // Tier 2 #10 — assign ticket to an admin (or unassign by passing null).
+  // Returns the populated ticket so the admin UI can update in place.
+  async assignTicket(ticketId: string, adminId: string | null) {
+    const update: Record<string, unknown> = adminId
+      ? { assignedTo: new mongoose.Types.ObjectId(adminId) }
+      : { $unset: { assignedTo: '' } };
+    // findByIdAndUpdate with a $unset operator requires the operator at the
+    // top level — branch accordingly.
+    const mongoUpdate = adminId ? { $set: update } : update;
+    return SupportTicket.findByIdAndUpdate(ticketId, mongoUpdate, { new: true })
+      .populate('userId', 'email firstName lastName schoolName role')
+      .populate('assignedTo', 'email firstName lastName');
+  }
+
+  // Tier 2 #10 — minimal admin directory used to populate the assignment picker.
+  async listAdmins() {
+    return User.find({ role: 'admin' })
+      .select('email firstName lastName')
+      .sort({ firstName: 1, email: 1 })
+      .lean();
   }
 
   // ── Jobs (Content Moderation) ─────────────────────────────

@@ -211,14 +211,46 @@ class AdminController {
   // GET /admin/tickets
   async listTickets(req: AuthRequest, res: Response, next: NextFunction) {
     try {
-      const { status, priority, page, limit } = req.query;
+      const { status, priority, assignee, page, limit } = req.query;
+      // Tier 2 #10 — "assignee=me" resolves to the caller server-side so the
+      // client doesn't have to round-trip its own userId.
+      const resolvedAssignee = assignee === 'me' ? req.user!.userId : (assignee as string | undefined);
       const result = await adminService.listAllTickets(
         status as string,
         priority as string,
+        resolvedAssignee,
         page ? Number(page) : 1,
         limit ? Number(limit) : 20,
       );
       res.json({ success: true, data: result });
+    } catch (err) { next(err); }
+  }
+
+  // POST /admin/tickets/:ticketId/assign
+  async assignTicket(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const ticketId = req.params['ticketId'] as string;
+      // Body: { adminId: string | null }. null/empty unassigns.
+      const raw = req.body?.adminId;
+      const adminId: string | null = raw && typeof raw === 'string' ? raw : null;
+      const ticket = await adminService.assignTicket(ticketId, adminId);
+      void auditService.record({
+        actor: actorFromRequest(req),
+        action: 'ticket.assign',
+        targetType: 'Ticket',
+        targetId: ticketId,
+        after: { assignedTo: adminId },
+        req,
+      });
+      res.json({ success: true, data: ticket });
+    } catch (err) { next(err); }
+  }
+
+  // GET /admin/admins — list of admin users for the assignment picker
+  async listAdmins(_req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const admins = await adminService.listAdmins();
+      res.json({ success: true, data: admins });
     } catch (err) { next(err); }
   }
 

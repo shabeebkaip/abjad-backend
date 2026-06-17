@@ -260,8 +260,23 @@ export class AdminService {
 
   // ── Support Tickets ──────────────────────────────────────
 
-  async listAllTickets(status?: string, priority?: string, page = 1, limit = 20) {
-    return adminRepository.listAllTickets({ status, priority, page, limit });
+  async listAllTickets(status?: string, priority?: string, assignee?: string, page = 1, limit = 20) {
+    return adminRepository.listAllTickets({ status, priority, assignee, page, limit });
+  }
+
+  // Tier 2 #10 — assign/unassign a ticket. Pass null to unassign.
+  async assignTicket(ticketId: string, adminId: string | null) {
+    if (adminId) {
+      const user = await User.findById(adminId).select('role').lean<{ role?: string } | null>();
+      if (!user || user.role !== 'admin') throw AppError.badRequest('Assignee must be an admin');
+    }
+    const ticket = await adminRepository.assignTicket(ticketId, adminId);
+    if (!ticket) throw AppError.notFound('Ticket not found');
+    return ticket;
+  }
+
+  async listAdmins() {
+    return adminRepository.listAdmins();
   }
 
   async getTicket(ticketId: string) {
