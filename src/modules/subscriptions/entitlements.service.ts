@@ -5,6 +5,7 @@ import {
   mergeWithRegistryDefaults,
   defaultEntitlementsFor,
   ENTITLEMENT_REGISTRY,
+  TRIAL_VALUES,
   type EntitlementBag,
 } from '../../utils/entitlement-registry';
 
@@ -73,10 +74,27 @@ class EntitlementsService {
       return { source: 'free', audience, bag: freeBagFor(audience) };
     }
 
+    const planBag = mergeWithRegistryDefaults(audience, plan.entitlements as EntitlementBag | undefined);
+
+    // Trial users get the plan as a taste — not the full thing. Overlay the
+    // documented trial caps from the registry so a trialing school sees
+    // maxActiveJobs=1 / bulkCandidateExport=false / etc., regardless of what
+    // the school_monthly plan stores.
+    if (sub.status === 'trialing') {
+      const overlaid: EntitlementBag = { ...planBag };
+      for (const e of ENTITLEMENT_REGISTRY) {
+        if (e.audience !== audience) continue;
+        if (Object.prototype.hasOwnProperty.call(TRIAL_VALUES, e.key)) {
+          overlaid[e.key] = TRIAL_VALUES[e.key]!;
+        }
+      }
+      return { source: 'plan', audience, bag: overlaid };
+    }
+
     return {
       source: 'plan',
       audience,
-      bag: mergeWithRegistryDefaults(audience, plan.entitlements as EntitlementBag | undefined),
+      bag: planBag,
     };
   }
 

@@ -40,7 +40,7 @@ const SCHOOL: EntitlementRegistryEntry[] = [
     kind: 'integerOrNull',
     audience: 'school',
     defaultValue: null,
-    wiredInCode: false,
+    wiredInCode: true,
   },
   {
     key: 'maxCvViewsPerMonth',
@@ -152,6 +152,32 @@ export const ENTITLEMENT_REGISTRY: EntitlementRegistryEntry[] = [...SCHOOL, ...T
 export const ENTITLEMENTS_BY_AUDIENCE: Record<'school' | 'teacher_premium', EntitlementRegistryEntry[]> = {
   school: SCHOOL,
   teacher_premium: TEACHER,
+};
+
+/**
+ * Trial caps — what a trialing user can actually do (vs the plan's full
+ * entitlements). The same source-of-truth is used by:
+ *   - the runtime entitlements gate (entitlementsService.getForUser)
+ *   - the public /pricing comparison "Free Trial vs Paid" column
+ *
+ * Numbers are deliberately tight — the trial is a *taste*, not a free tier.
+ * SSD §2.1.5 anchors these values; tweak with care.
+ */
+export const TRIAL_VALUES: EntitlementBag = {
+  // School
+  maxActiveJobs: 1,
+  maxCvViewsPerMonth: 90,       // ≈ 3/day × 30 (SSD §2.1.5)
+  teamSeats: 1,
+  trialDays: 5,
+  bulkCandidateExport: false,
+  prioritySupport: false,
+  analyticsAccess: false,
+  bestMatchSort: false,
+  // Teacher
+  premiumRanking: false,
+  verifiedBadge: false,
+  applicationLimit: null,
+  monthlyJobAlerts: null,
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────────

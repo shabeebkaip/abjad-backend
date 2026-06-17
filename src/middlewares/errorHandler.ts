@@ -4,11 +4,14 @@ import { AppError } from '../utils/app-error.util';
 export const errorHandler = (err: any, _req: any, res: Response, _next: any) => {
   console.error('Error:', err);
 
-  // Custom AppError
+  // Custom AppError. `details` (when present) is merged into the JSON
+  // response so callers can branch on a machine-readable code without
+  // parsing free-text messages.
   if (err instanceof AppError) {
     return res.status(err.statusCode).json({
       success: false,
       message: err.message,
+      ...(err.details ?? {}),
     });
   }
 

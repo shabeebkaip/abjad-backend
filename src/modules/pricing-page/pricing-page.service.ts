@@ -4,6 +4,7 @@ import { PricingPageContent, IPricingPageContent } from '../../models/pricing-pa
 import { PRICING_PAGE_DEFAULTS } from '../../utils/pricing-page-defaults';
 import {
   ENTITLEMENTS_BY_AUDIENCE,
+  TRIAL_VALUES,
   type EntitlementRegistryEntry,
   type EntitlementBag,
   defaultEntitlementsFor,
@@ -116,28 +117,12 @@ function describeEntitlement(
 }
 
 // Trial-side cell for the comparison table — represents what a 5-day
-// trial gives. We hardcode the "free tier" values per key here; this is
-// the conversion lever, so it's documented and intentional.
-const TRIAL_VALUES: Record<string, number | boolean | null> = {
-  // School trial caps from SSD §2.1.5 + subscriptions.service constants.
-  maxActiveJobs: 1,
-  maxCvViewsPerMonth: 90,      // 3/day × 30 days approximate
-  teamSeats: 1,
-  trialDays: 5,
-  bulkCandidateExport: false,
-  prioritySupport: false,
-  analyticsAccess: false,
-  bestMatchSort: false,
-  // Teacher trial — premium ranking off, badge off, but apply/alerts unrestricted
-  premiumRanking: false,
-  verifiedBadge: false,
-  applicationLimit: null,
-  monthlyJobAlerts: null,
-};
-
+// trial gives. Pulled from the same TRIAL_VALUES table that the runtime
+// entitlements gate uses, so the public page and the actual cap can't drift.
 function trialValueFor(entry: EntitlementRegistryEntry): number | boolean | null {
-  const v = TRIAL_VALUES[entry.key];
-  if (v !== undefined) return v;
+  if (Object.prototype.hasOwnProperty.call(TRIAL_VALUES, entry.key)) {
+    return TRIAL_VALUES[entry.key]!;
+  }
   if (entry.kind === 'boolean') return false;
   if (entry.kind === 'integerOrNull') return 0;
   return 0;
