@@ -101,6 +101,8 @@ router.get('/reports', adminController.getReports.bind(adminController));
 // SRD subscription Phase A — pricing plan admin
 router.get('/pricing-plans', adminPricingController.list.bind(adminPricingController));
 router.patch('/pricing-plans/:id', adminPricingController.update.bind(adminPricingController));
+// Step 1 entitlement registry — UI reads this once to render the per-plan editor.
+router.get('/entitlement-registry', adminPricingController.getRegistry.bind(adminPricingController));
 
 // SRD subscription Phase C — WDRS weights + feature flags + premium-gate status
 router.get('/wdrs-config', adminRankingController.getConfig.bind(adminRankingController));

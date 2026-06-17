@@ -13,6 +13,7 @@ import mongoose from 'mongoose';
 import { config } from '../src/config';
 import { PricingPlan, PlanCode } from '../src/models/pricing-plan.model';
 import { sarToHalala } from '../src/utils/money.util';
+import { defaultEntitlementsFor } from '../src/utils/entitlement-registry';
 
 interface SeedPlan {
   code: PlanCode;
@@ -87,6 +88,9 @@ async function run() {
         console.log(`unchanged ${plan.code.padEnd(28)} ${plan.priceSAR} SAR`);
       }
     } else {
+      // New plan — seed entitlements with registry defaults so the runtime
+      // gates have something to read. Marketing fields start empty —
+      // admin populates them via the editor.
       await PricingPlan.create({
         code: plan.code,
         type: plan.type,
@@ -96,10 +100,30 @@ async function run() {
         nameAr: plan.nameAr,
         isActive: true,
         effectiveFrom: new Date(),
+        entitlements: defaultEntitlementsFor(plan.type),
+        marketingBulletsEn: [],
+        marketingBulletsAr: [],
+        displayOrder: 0,
+        isHighlighted: false,
       });
       created++;
       console.log(`created  ${plan.code.padEnd(28)} ${plan.priceSAR} SAR`);
     }
+  }
+
+  // Backfill: any existing plans missing the entitlements bag get the
+  // audience default. Idempotent and only writes when truly missing.
+  const missingEntitlements = await PricingPlan.find({
+    $or: [
+      { entitlements: { $exists: false } },
+      { entitlements: null },
+      { entitlements: {} },
+    ],
+  });
+  for (const p of missingEntitlements) {
+    p.entitlements = defaultEntitlementsFor(p.type);
+    await p.save();
+    console.log(`backfilled entitlements on ${p.code}`);
   }
 
   console.log(`\nDone. created=${created} updated=${updated} total=${PLANS.length}`);

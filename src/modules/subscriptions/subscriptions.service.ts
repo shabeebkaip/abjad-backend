@@ -1,11 +1,17 @@
 import { subscriptionsRepository } from './subscriptions.repository';
+import { entitlementsService } from './entitlements.service';
 import { ISubscription } from '../../models/subscription.model';
 import User from '../../models/user.model';
 import { AppError } from '../../utils/app-error.util';
 
 /**
- * Trial length per SSD §2.1.5 — 5 days from sign-up.
+ * Default trial length per SSD §2.1.5 — 5 days from sign-up.
  * Only applies to schools.
+ *
+ * NOTE — Post-launch billing pass: this constant is now a FALLBACK only.
+ * The runtime value comes from `plan.entitlements.trialDays`, edited in the
+ * admin Pricing Plans page. The constant survives for tests / fixtures and
+ * for the case where the plan record is somehow missing entitlements.
  */
 export const TRIAL_DAYS = 5;
 /**
@@ -31,9 +37,13 @@ export class SubscriptionsService {
     const plan = await subscriptionsRepository.findActivePlan('school_monthly');
     if (!plan) throw AppError.internalError('School monthly plan not configured');
 
+    // Read trial duration from the plan's entitlement bag — admin can edit
+    // via /billing/plans. Falls back to the SSD default if the bag is empty.
+    const trialDays = await entitlementsService.getTrialDaysFor(plan.code);
+
     // Snapshot trial start on the user too (denormalised for fast entitlement checks).
     user.trialStartedAt = new Date();
-    user.trialEndsAt = new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
+    user.trialEndsAt = new Date(Date.now() + trialDays * 24 * 60 * 60 * 1000);
     await user.save();
 
     return subscriptionsRepository.createTrial({
@@ -42,7 +52,7 @@ export class SubscriptionsService {
       durationMonths: 1,
       pricePerPeriodHalala: plan.priceHalala,
       planCode: plan.code,
-      trialDays: TRIAL_DAYS,
+      trialDays,
     });
   }
 
