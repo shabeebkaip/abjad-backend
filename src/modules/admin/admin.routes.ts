@@ -6,6 +6,7 @@ import { adminPaymentsController } from './admin-payments.controller';
 import { auditController } from '../audit/audit.controller';
 import { queueController } from '../queue/queue.controller';
 import { suspensionController } from '../suspension/suspension.controller';
+import { templateController } from '../email-templates/template.controller';
 import { authenticate, authorize } from '../../middlewares/auth';
 
 const router = Router();
@@ -68,6 +69,12 @@ router.patch('/tickets/:ticketId/status', adminController.updateTicketStatus.bin
 // Tier 2 #10 — assign ticket + admin directory for the picker
 router.post('/tickets/:ticketId/assign', adminController.assignTicket.bind(adminController));
 router.get('/admins', adminController.listAdmins.bind(adminController));
+
+// Tier 2 #12 — Email template editor (DB-backed overrides on the registry)
+router.get('/email-templates',             templateController.list.bind(templateController));
+router.get('/email-templates/:key',        templateController.get.bind(templateController));
+router.patch('/email-templates/:key',      templateController.update.bind(templateController));
+router.post('/email-templates/:key/reset', templateController.reset.bind(templateController));
 
 // Jobs (content moderation)
 router.get('/jobs', adminController.listJobs.bind(adminController));

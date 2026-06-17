@@ -22,6 +22,16 @@ export const connectDB = async (): Promise<void> => {
 
   isConnected = db.connections[0].readyState === 1;
   console.log('✅ MongoDB connected successfully');
+
+  // Tier 2 #12 — warm the email-template override cache on first connect so
+  // every transactional send is a sync registry lookup. Failures are
+  // non-fatal (service falls back to registry defaults at render time).
+  try {
+    const { templateService } = await import('./modules/email-templates/template.service');
+    await templateService.warm();
+  } catch (err) {
+    console.error('[email-templates] warm failed:', err);
+  }
 };
 
 // Local development only — Vercel uses api/index.ts as the entry point

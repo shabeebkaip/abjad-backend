@@ -26,6 +26,7 @@ export type AuditAction =
   | 'ticket.reply' | 'ticket.status_change' | 'ticket.assign'
   // Content
   | 'job.moderate'
+  | 'email_template.update' | 'email_template.reset'
   // Auth
   | 'admin.login' | 'admin.logout'
   // Catch-all
