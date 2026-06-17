@@ -286,24 +286,35 @@ interface PreparedScenario {
 }
 
 async function clearDemo(): Promise<void> {
-  // Find demo user ids, then delete everything attached to them.
-  const users = await User.find({ email: { $regex: `^${DEMO_TAG_PREFIX}` } }).select('_id').lean();
+  // Demo emails are `demo+billing-...@abjad.dev`. The `+` is a regex
+  // metacharacter so we have to either escape it or use a literal-string
+  // prefix match — Mongoose accepts a RegExp object directly which is
+  // cleaner than escaping inside a template literal.
+  const emailMatcher = new RegExp('^' + DEMO_TAG_PREFIX.replace(/[+]/g, '\\+'));
+
+  const users = await User.find({ email: emailMatcher }).select('_id').lean();
   const userIds = users.map((u) => u._id);
   if (userIds.length === 0) {
     console.log('No demo users found — nothing to clear.');
     return;
   }
-  const [subs, invs, pays, ledg] = await Promise.all([
+  // Payments link to demo data via either bankReference (every demo payment
+  // gets a `demo-<tag>` reference) or via demo invoiceIds. Resolve both so
+  // we don't leave orphan Payment docs.
+  const demoInvoiceIds = await Invoice.find({ ownerId: { $in: userIds } }).select('_id').lean();
+  const invoiceIdList = demoInvoiceIds.map((i) => i._id);
+
+  const [subs, invs, paysByRef, paysByInv, ledg] = await Promise.all([
     Subscription.deleteMany({ ownerId: { $in: userIds } }),
     Invoice.deleteMany({ ownerId: { $in: userIds } }),
-    Payment.deleteMany({ }).then(async () => {
-      // Payments are linked via invoiceId — clear notes-tagged ones first
-      return Payment.deleteMany({ bankReference: { $regex: '^demo-' } });
-    }),
+    Payment.deleteMany({ bankReference: { $regex: '^demo-' } }),
+    Payment.deleteMany({ invoiceId: { $in: invoiceIdList } }),
     LedgerEntry.deleteMany({ ownerId: { $in: userIds } }),
   ]);
   await User.deleteMany({ _id: { $in: userIds } });
-  console.log(`Cleared: ${users.length} users, ${subs.deletedCount} subs, ${invs.deletedCount} invs, ${pays.deletedCount} pays, ${ledg.deletedCount} ledger entries.`);
+  console.log(
+    `Cleared: ${users.length} users · ${subs.deletedCount} subs · ${invs.deletedCount} invoices · ${paysByRef.deletedCount + paysByInv.deletedCount} payments · ${ledg.deletedCount} ledger entries`,
+  );
 }
 
 async function seedScenario(prep: PreparedScenario): Promise<void> {
