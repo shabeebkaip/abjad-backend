@@ -16,7 +16,8 @@
     "seed:jobs": "ts-node --transpile-only scripts/seed-jobs.ts",
     "seed:applications": "ts-node --transpile-only scripts/seed-applications.ts",
     "seed:billing": "ts-node --transpile-only scripts/seed-billing.ts",
-    "seed:pricing-page": "ts-node --transpile-only scripts/seed-pricing-page.ts"
+    "seed:pricing-page": "ts-node --transpile-only scripts/seed-pricing-page.ts",
+    "seed:demo-teacher": "ts-node --transpile-only scripts/seed-demo-teacher.ts"
   },
   "repository": {
     "type": "git",

@@ -14,6 +14,22 @@ export class PaymentsController {
    * checkout. Bank transfer skips the provider call and returns a pending
    * invoice with bank instructions.
    */
+  /**
+   * POST /api/payments/demo/:providerPaymentId/complete
+   * Demo-only — simulates a successful Moyasar webhook. Activates the
+   * subscription server-side as if the webhook had fired. Refuses in prod
+   * and when real Moyasar credentials are configured.
+   */
+  async demoComplete(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const id = String(req.params['providerPaymentId']);
+      const result = await paymentsService.demoCompletePayment(id);
+      res.json({ success: true, data: result });
+    } catch (err) {
+      next(err);
+    }
+  }
+
   async initiate(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const { planCode, method, callbackUrl } = req.body as {

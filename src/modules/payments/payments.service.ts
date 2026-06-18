@@ -11,7 +11,7 @@
 import mongoose from 'mongoose';
 import { config } from '../../config';
 import { AppError } from '../../utils/app-error.util';
-import { getPaymentProvider } from '../../utils/payment-provider';
+import { getPaymentProvider, isDemoProvider } from '../../utils/payment-provider';
 import { nextInvoiceNumber } from '../../utils/invoice-number.util';
 import { toHijriString } from '../../utils/hijri.util';
 import { breakdownFromSubtotal } from '../../utils/money.util';
@@ -33,6 +33,10 @@ export interface InitiatePaymentResult {
   publishableKey: string;          // pass-through to the client for Moyasar.js
   amountHalala: number;
   currency: 'SAR';
+  // True when the backend is running with no Moyasar credentials and the
+  // DemoPaymentProvider is in effect. The frontend renders a
+  // "simulate successful payment" button instead of the Moyasar.js form.
+  demoMode: boolean;
 }
 
 export class PaymentsService {
@@ -158,7 +162,24 @@ export class PaymentsService {
       publishableKey: config.moyasar.publishableKey,
       amountHalala: totalHalala,
       currency: 'SAR',
+      demoMode: isDemoProvider(),
     };
+  }
+
+  /**
+   * Demo-only — simulates the Moyasar webhook firing a successful payment.
+   * Only callable when the DemoPaymentProvider is in effect; refuses in
+   * production. Used by the demonstration checkout flow when no Moyasar
+   * credentials are configured.
+   */
+  async demoCompletePayment(providerPaymentId: string): Promise<{ activated: boolean; subscriptionId?: string }> {
+    if (!isDemoProvider()) {
+      throw AppError.forbidden('Demo completion is only available when Moyasar is unconfigured');
+    }
+    if (process.env['NODE_ENV'] === 'production') {
+      throw AppError.forbidden('Demo completion is disabled in production');
+    }
+    return this.markPaymentSucceededByProviderId(providerPaymentId, { demo: true, completedAt: new Date().toISOString() });
   }
 
   /**

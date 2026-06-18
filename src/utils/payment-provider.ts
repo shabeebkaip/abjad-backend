@@ -63,10 +63,64 @@ export class MoyasarProvider implements PaymentProvider {
   }
 }
 
+/**
+ * Demo provider — activates when no Moyasar credentials are configured.
+ * Returns synthetic providerPaymentIds prefixed with `demo_` so the rest of
+ * the pipeline (Payment doc, webhook idempotency, etc.) treats the flow the
+ * same way. The frontend detects `isDemoProvider()` and renders a "Demo —
+ * Simulate successful payment" button in place of the Moyasar.js form.
+ *
+ * Strictly dev/staging — refuses to load in production via the same env
+ * guard the keys check.
+ */
+export class DemoPaymentProvider implements PaymentProvider {
+  async initiatePayment(input: InitiatePaymentInput): Promise<InitiatePaymentResult> {
+    const id = `demo_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    return {
+      providerPaymentId: id,
+      status: 'pending',
+      rawProviderResponse: { demo: true, input },
+    };
+  }
+  async getPaymentStatus(providerPaymentId: string) {
+    return {
+      status: 'pending',
+      amountHalala: 0,
+      rawProviderResponse: { demo: true, providerPaymentId },
+    };
+  }
+  async refundPayment(providerPaymentId: string, amountHalala?: number) {
+    return { demo: true, providerPaymentId, amountHalala };
+  }
+}
+
 let _provider: PaymentProvider | null = null;
+let _isDemoCached: boolean | null = null;
+
+/**
+ * True when the backend is running with no Moyasar credentials — used by:
+ *   - the demo-complete endpoint to know it can mock a successful webhook
+ *   - the initiate response to carry a `demoMode` flag the frontend reads
+ * Cached on first call since env doesn't change at runtime.
+ */
+export function isDemoProvider(): boolean {
+  if (_isDemoCached !== null) return _isDemoCached;
+  const hasKey = (process.env['MOYASAR_SECRET_KEY'] ?? '').trim().length > 0;
+  _isDemoCached = !hasKey;
+  return _isDemoCached;
+}
 
 export function getPaymentProvider(): PaymentProvider {
-  if (!_provider) _provider = new MoyasarProvider();
+  if (_provider) return _provider;
+  if (isDemoProvider()) {
+    if (process.env['NODE_ENV'] === 'production') {
+      throw new Error('Refusing to use DemoPaymentProvider in production. Configure MOYASAR_SECRET_KEY.');
+    }
+    console.warn('[payments] No MOYASAR_SECRET_KEY set — using DemoPaymentProvider (dev only).');
+    _provider = new DemoPaymentProvider();
+  } else {
+    _provider = new MoyasarProvider();
+  }
   return _provider;
 }
 

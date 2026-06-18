@@ -32,6 +32,17 @@ export const sendOtpEmail = async (email: string, otp: string): Promise<void> =>
     return;
   }
 
+  // In development: ALSO print to the backend console so demo / fake email
+  // addresses (e.g. demo.teacher@abjad.dev) can complete the OTP flow by
+  // reading the code from the server logs. The real email is still attempted
+  // below so dev users with a working SMTP can use the inbox path too.
+  if (process.env['NODE_ENV'] !== 'production') {
+    console.log(`\n📧 [DEV] OTP Email`);
+    console.log(`   To:   ${email}`);
+    console.log(`   Code: ${otp}`);
+    console.log(`   (also attempting real send via SMTP if configured)\n`);
+  }
+
   try {
     await getTransporter().sendMail({
       from: `"Abjad Platform" <${config.email.from}>`,
@@ -50,6 +61,14 @@ export const sendOtpEmail = async (email: string, otp: string): Promise<void> =>
       `,
     });
   } catch (error) {
+    // In dev: swallow SMTP failures so demo / fake addresses
+    // (demo.teacher@abjad.dev) don't crash the OTP flow — the code was
+    // already logged to console above. In prod: re-throw so the caller
+    // sees the failure.
+    if (process.env['NODE_ENV'] !== 'production') {
+      console.warn(`[DEV] SMTP send failed for ${email} — OTP is in the logs above.`);
+      return;
+    }
     console.error('Email send failed:', error);
     throw new Error('Failed to send OTP email. Please try again.');
   }
