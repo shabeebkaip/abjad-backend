@@ -183,6 +183,67 @@ export class PaymentsService {
   }
 
   /**
+   * Reconcile a single payment with Moyasar — the localhost / webhook-missed
+   * recovery path. The Moyasar webhook can't reach a localhost backend during
+   * dev, and in production webhooks can be missed (provider blip, transient
+   * outage), so the success page calls this to ask "did Moyasar already
+   * accept this charge?" rather than waiting forever for the webhook.
+   *
+   * Auth: caller must own the Invoice tied to the Payment. The controller
+   * checks this against req.user.userId.
+   *
+   * Behaviour:
+   *   - Looks up our Payment by providerPaymentId.
+   *   - Asks Moyasar.getPayment(providerPaymentId) for its current status.
+   *   - If Moyasar says 'paid' AND our Payment isn't yet 'succeeded',
+   *     runs the same webhook hot path so the Invoice / Ledger / Subscription
+   *     state changes are identical to a real webhook fire.
+   *   - Idempotent: re-calling after success is a fast no-op.
+   *
+   * Returns the current canonical status from our DB so the frontend can
+   * decide whether to redirect or keep waiting.
+   */
+  async reconcilePayment(providerPaymentId: string, callerUserId: string): Promise<{
+    status: 'pending' | 'succeeded' | 'failed' | 'unknown';
+    activated: boolean;
+    subscriptionId?: string;
+  }> {
+    const payment = await Payment.findOne({ moyasarPaymentId: providerPaymentId });
+    if (!payment) throw AppError.notFound('Payment not found');
+
+    // Ownership check — only the buyer (or admin) can reconcile.
+    const invoice = await Invoice.findById(payment.invoiceId).select('ownerId').lean();
+    if (!invoice) throw AppError.notFound('Invoice not found');
+    if (invoice.ownerId.toString() !== callerUserId) {
+      throw AppError.forbidden('You do not have access to this payment');
+    }
+
+    // Fast path — already succeeded server-side, no need to hit Moyasar.
+    if (payment.status === 'succeeded') {
+      return { status: 'succeeded', activated: false };
+    }
+    if (payment.status === 'failed') {
+      return { status: 'failed', activated: false };
+    }
+
+    // Ask the provider for the latest. The DemoPaymentProvider returns
+    // 'pending' from this method (no real ledger), so reconcile is a no-op
+    // in demo mode — the demo simulator button is the activation path there.
+    const provider = getPaymentProvider();
+    const live = await provider.getPaymentStatus(providerPaymentId);
+
+    if (live.status === 'paid') {
+      const result = await this.markPaymentSucceededByProviderId(providerPaymentId, live.rawProviderResponse);
+      return { status: 'succeeded', ...result };
+    }
+    if (live.status === 'failed') {
+      await this.markPaymentFailedByProviderId(providerPaymentId, live.rawProviderResponse, 'Reconciliation found failed status');
+      return { status: 'failed', activated: false };
+    }
+    return { status: 'pending', activated: false };
+  }
+
+  /**
    * Webhook hot path — assumes the WebhookEvent row has been recorded and the
    * signature already verified by the caller. Idempotent: if Payment is
    * already 'succeeded' we no-op.

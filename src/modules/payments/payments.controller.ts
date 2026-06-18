@@ -30,6 +30,24 @@ export class PaymentsController {
     }
   }
 
+  /**
+   * POST /api/payments/:providerPaymentId/reconcile
+   * Reconciles a single payment by asking Moyasar directly for the latest
+   * status — recovers from missed/delayed webhooks. Always required on
+   * localhost (webhook can't reach the backend); occasionally helpful in
+   * production during a provider blip. Auth-gated; ownership double-checked
+   * in the service.
+   */
+  async reconcile(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const id = String(req.params['providerPaymentId']);
+      const result = await paymentsService.reconcilePayment(id, req.user!.userId);
+      res.json({ success: true, data: result });
+    } catch (err) {
+      next(err);
+    }
+  }
+
   async initiate(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const { planCode, method, callbackUrl } = req.body as {
