@@ -11,7 +11,7 @@ import { z } from 'zod';
 export const validate = (schema: z.ZodSchema) =>
   (req: Request, res: Response, next: NextFunction) => {
     try {
-      schema.parse(req.body);
+      req.body = schema.parse(req.body);
       next();
     } catch (error: any) {
       // Format Zod errors into readable field-specific messages

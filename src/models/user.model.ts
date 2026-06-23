@@ -132,7 +132,12 @@ const userSchema = new Schema<UserDocument>(
     status: {
       type: String,
       enum: ["active", "suspended", "blocked", "pending"],
-      default: "pending",
+      // "active" by default — OTP signup IS the email verification. There is
+      // no separate "pending email verification" state in this codebase, so a
+      // pending default would silently lock new accounts out of /me. The
+      // "pending" enum value stays for admin workflows but must never gate
+      // auth — see /me + /refresh which now only reject suspended/blocked.
+      default: "active",
     },
     isPhoneVerified: { type: Boolean, default: false },
     isEmailVerified: { type: Boolean, default: true },

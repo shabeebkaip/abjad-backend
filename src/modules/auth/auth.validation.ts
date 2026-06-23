@@ -15,6 +15,12 @@ export const verifyOtpSchema = z.object({
   purpose: z.enum(['signup', 'login', 'reset']),
   role: z.enum(['teacher', 'school']).optional(),
   rememberDevice: z.boolean().optional(),
+  // Registration fields passed through from the signup form (not stored on User — used to
+  // populate profile on createUser). phone/city/subject/etc are intentionally omitted.
+  firstName: z.string().optional(),
+  lastName: z.string().optional(),
+  schoolName: z.string().optional(),
+  contactName: z.string().optional(),
 });
 
 export const refreshTokenSchema = z.object({

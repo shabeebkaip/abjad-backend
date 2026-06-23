@@ -7,6 +7,7 @@ import authService from './auth.service';
 import authRepository from './auth.repository';
 import { SendOtpDTO, VerifyOtpDTO } from './auth.types';
 import { config } from '../../config';
+import { AppError } from '../../utils/app-error.util';
 
 class AuthController {
   async sendOtp(req: Request, res: Response, next: NextFunction) {
@@ -97,6 +98,18 @@ class AuthController {
         data: { accessToken },
       });
     } catch (error) {
+      // On any auth failure (rotated, expired, invalid token) clear the stale
+      // cookie so the browser stops presenting a dead session on every reload.
+      // Without this the proxy sees the cookie, lets the request through, the
+      // layout redirects to /login, the proxy bounces back — infinite loop.
+      if (error instanceof AppError && error.statusCode === 401) {
+        res.clearCookie(config.cookie.refreshTokenName, {
+          httpOnly: true,
+          secure: config.cookie.secure,
+          sameSite: config.cookie.sameSite,
+          path: config.cookie.path,
+        });
+      }
       next(error);
     }
   }
@@ -171,7 +184,11 @@ class AuthController {
         return;
       }
 
-      if (dbUser.status && dbUser.status !== 'active') {
+      // Only hard-block on suspended / blocked — "pending" is a legacy / admin
+      // workflow state (e.g. doc review) and must never gate auth, otherwise
+      // new signups whose status wasn't explicitly set get logged straight back
+      // out on the next page load.
+      if (dbUser.status === 'suspended' || dbUser.status === 'blocked') {
         res.clearCookie(config.cookie.refreshTokenName, {
           httpOnly: true,
           secure: config.cookie.secure,

@@ -217,7 +217,10 @@ class AuthService {
       await authRepository.revokeSession(session._id!.toString());
       throw AppError.unauthorized('User account no longer exists. Please sign in again.');
     }
-    if (user.status && user.status !== 'active') {
+    // Same policy as /me: only hard-block suspended / blocked. "pending" must
+    // not gate auth — it's an admin workflow flag, not an email-verification
+    // flag (OTP IS the verification).
+    if (user.status === 'suspended' || user.status === 'blocked') {
       await authRepository.revokeSession(session._id!.toString());
       throw AppError.forbidden(`Account is ${user.status}.`);
     }

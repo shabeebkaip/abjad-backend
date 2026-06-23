@@ -273,7 +273,7 @@ async function upsertUser(u: DemoUser): Promise<{ id: string; created: boolean }
     firstName: u.firstName,
     lastName: u.lastName,
     isEmailVerified: true,
-    isActive: true,
+    status: 'active',
   });
   return { id: String(created._id), created: true };
 }

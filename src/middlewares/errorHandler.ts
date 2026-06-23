@@ -26,10 +26,16 @@ export const errorHandler = (err: any, _req: any, res: Response, _next: any) => 
 
   // Mongoose duplicate key error
   if (err.code === 11000) {
-    const field = Object.keys(err.keyValue)[0];
+    const rawField = Object.keys(err.keyValue ?? {})[0] ?? 'value';
+    const FIELD_LABELS: Record<string, string> = {
+      email: 'email address',
+      phone: 'email address',   // phone is never shown to users; map to email for login context
+      uuid: 'account',
+    };
+    const label = FIELD_LABELS[rawField] ?? rawField.replace(/_/g, ' ');
     return res.status(400).json({
       success: false,
-      message: `This ${field} is already registered. Please use a different one.`,
+      message: `An account with this ${label} already exists. Please sign in instead.`,
     });
   }
 

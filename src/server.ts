@@ -23,6 +23,20 @@ export const connectDB = async (): Promise<void> => {
   isConnected = db.connections[0].readyState === 1;
   console.log('✅ MongoDB connected successfully');
 
+  // One-shot migration: any user still on the legacy "pending" default needs
+  // to be flipped to "active". OTP is the email-verification step, so a
+  // pending status was a footgun — /me would 403 and the user would be
+  // logged straight back out. Idempotent: a no-op after the first run.
+  try {
+    const User = (await import('./models/user.model')).default;
+    const r = await User.updateMany({ status: 'pending' }, { $set: { status: 'active' } });
+    if (r.modifiedCount > 0) {
+      console.log(`[migration] flipped ${r.modifiedCount} pending user(s) → active`);
+    }
+  } catch (err) {
+    console.error('[migration] pending→active failed:', err);
+  }
+
   // Tier 2 #12 — warm the email-template override cache on first connect so
   // every transactional send is a sync registry lookup. Failures are
   // non-fatal (service falls back to registry defaults at render time).

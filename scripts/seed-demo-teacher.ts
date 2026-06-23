@@ -43,7 +43,7 @@ async function run() {
       firstName: 'Demo',
       lastName: 'Teacher',
       isEmailVerified: true,
-      isActive: true,
+      status: 'active',
     });
     console.log(`✓ created teacher ${DEMO_EMAIL}`);
   } else {
