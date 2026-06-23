@@ -33,35 +33,18 @@ export interface PaymentProvider {
   refundPayment(providerPaymentId: string, amountHalala?: number): Promise<unknown>;
 }
 
-// Maps our internal method names to the Moyasar source type.
-// mada is a Saudi debit scheme but uses the creditcard API surface.
-const METHOD_TO_SOURCE_TYPE: Record<string, string> = {
-  mada:         'creditcard',
-  moyasar_card: 'creditcard',
-  apple_pay:    'applepay',
-  stcpay:       'stcpay',
-};
-
 export class MoyasarProvider implements PaymentProvider {
   async initiatePayment(input: InitiatePaymentInput): Promise<InitiatePaymentResult> {
-    const sourceType = (input.method && METHOD_TO_SOURCE_TYPE[input.method]) ?? 'creditcard';
-    const resp = await moyasarClient.createPayment({
-      amountHalala: input.amountHalala,
-      description: input.description,
-      callbackUrl: input.callbackUrl,
-      metadata: {
-        invoiceUuid: input.invoiceUuid,
-        ownerId: input.ownerId,
-      },
-      source: { type: sourceType },
-    });
-    const transactionUrl =
-      typeof resp.source?.transaction_url === 'string' ? resp.source.transaction_url : undefined;
+    // Moyasar's REST API requires real card credentials server-side — there is
+    // no "create payment intent without card" endpoint. We therefore do NOT
+    // call Moyasar here. Instead, Moyasar.js on the frontend collects the card
+    // details directly and creates the Moyasar payment in the browser. The
+    // Moyasar payment ID reaches us via the callbackUrl redirect (?id=...) and
+    // is wired to this Payment record during reconcile / webhook.
     return {
-      providerPaymentId: resp.id,
-      status: resp.status === 'paid' ? 'paid' : resp.status === 'failed' ? 'failed' : 'pending',
-      rawProviderResponse: resp,
-      transactionUrl,
+      providerPaymentId: `pending_${input.invoiceUuid}`,
+      status: 'pending',
+      rawProviderResponse: null,
     };
   }
 

@@ -41,7 +41,8 @@ export class PaymentsController {
   async reconcile(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const id = String(req.params['providerPaymentId']);
-      const result = await paymentsService.reconcilePayment(id, req.user!.userId);
+      const invoiceId = req.query['invoiceId'] as string | undefined;
+      const result = await paymentsService.reconcilePayment(id, req.user!.userId, invoiceId);
       res.json({ success: true, data: result });
     } catch (err) {
       next(err);

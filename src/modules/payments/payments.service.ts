@@ -211,12 +211,29 @@ export class PaymentsService {
    * Returns the current canonical status from our DB so the frontend can
    * decide whether to redirect or keep waiting.
    */
-  async reconcilePayment(providerPaymentId: string, callerUserId: string): Promise<{
+  async reconcilePayment(
+    providerPaymentId: string,
+    callerUserId: string,
+    // invoiceId is the fallback for the Moyasar.js flow where the Moyasar
+    // payment is created client-side and moyasarPaymentId isn't stored yet.
+    invoiceId?: string,
+  ): Promise<{
     status: 'pending' | 'succeeded' | 'failed' | 'unknown';
     activated: boolean;
     subscriptionId?: string;
   }> {
-    const payment = await Payment.findOne({ moyasarPaymentId: providerPaymentId });
+    let payment = await Payment.findOne({ moyasarPaymentId: providerPaymentId });
+
+    if (!payment && invoiceId && mongoose.Types.ObjectId.isValid(invoiceId)) {
+      // Moyasar.js flow: client created the Moyasar payment, so moyasarPaymentId
+      // was never stored. Find by our invoice ID and wire it up now.
+      payment = await Payment.findOne({ invoiceId: new mongoose.Types.ObjectId(invoiceId) });
+      if (payment) {
+        payment.moyasarPaymentId = providerPaymentId;
+        await payment.save();
+      }
+    }
+
     if (!payment) throw AppError.notFound('Payment not found');
 
     // Ownership check — only the buyer (or admin) can reconcile.
@@ -260,9 +277,25 @@ export class PaymentsService {
     providerPaymentId: string,
     rawPayload: unknown,
   ): Promise<{ activated: boolean; subscriptionId?: string }> {
-    const payment = await Payment.findOne({ moyasarPaymentId: providerPaymentId });
+    let payment = await Payment.findOne({ moyasarPaymentId: providerPaymentId });
+
     if (!payment) {
-      // Webhook arrived for a payment we never recorded — log to error and bail.
+      // Moyasar.js flow: client created the Moyasar payment, so moyasarPaymentId
+      // was never stored. Correlate via metadata.invoiceId embedded by Moyasar.js.
+      type WithMeta = { data?: { metadata?: Record<string, unknown> }; metadata?: Record<string, unknown> };
+      const raw = rawPayload as WithMeta | null;
+      const meta = raw?.data?.metadata ?? raw?.metadata;
+      const invoiceId = meta?.['invoiceId'] as string | undefined;
+      if (invoiceId && mongoose.Types.ObjectId.isValid(invoiceId)) {
+        payment = await Payment.findOne({ invoiceId: new mongoose.Types.ObjectId(invoiceId) });
+        if (payment) {
+          payment.moyasarPaymentId = providerPaymentId;
+          await payment.save();
+        }
+      }
+    }
+
+    if (!payment) {
       throw AppError.notFound(`Payment not found for provider id ${providerPaymentId}`);
     }
     if (payment.status === 'succeeded') {
