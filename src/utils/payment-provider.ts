@@ -14,12 +14,14 @@ export interface InitiatePaymentInput {
   invoiceUuid: string;             // our internal id, returned in metadata
   ownerId: string;                 // school / teacher user id
   callbackUrl?: string;
+  method?: string;                 // checkout method (mada, apple_pay, stcpay, moyasar_card)
 }
 
 export interface InitiatePaymentResult {
   providerPaymentId: string;       // Moyasar payment.id (or equivalent)
   status: 'pending' | 'paid' | 'failed';
   rawProviderResponse: unknown;
+  transactionUrl?: string;         // Moyasar hosted-checkout URL (redirect user here)
 }
 
 export interface PaymentProvider {
@@ -31,8 +33,18 @@ export interface PaymentProvider {
   refundPayment(providerPaymentId: string, amountHalala?: number): Promise<unknown>;
 }
 
+// Maps our internal method names to the Moyasar source type.
+// mada is a Saudi debit scheme but uses the creditcard API surface.
+const METHOD_TO_SOURCE_TYPE: Record<string, string> = {
+  mada:         'creditcard',
+  moyasar_card: 'creditcard',
+  apple_pay:    'applepay',
+  stcpay:       'stcpay',
+};
+
 export class MoyasarProvider implements PaymentProvider {
   async initiatePayment(input: InitiatePaymentInput): Promise<InitiatePaymentResult> {
+    const sourceType = (input.method && METHOD_TO_SOURCE_TYPE[input.method]) ?? 'creditcard';
     const resp = await moyasarClient.createPayment({
       amountHalala: input.amountHalala,
       description: input.description,
@@ -41,11 +53,15 @@ export class MoyasarProvider implements PaymentProvider {
         invoiceUuid: input.invoiceUuid,
         ownerId: input.ownerId,
       },
+      source: { type: sourceType },
     });
+    const transactionUrl =
+      typeof resp.source?.transaction_url === 'string' ? resp.source.transaction_url : undefined;
     return {
       providerPaymentId: resp.id,
       status: resp.status === 'paid' ? 'paid' : resp.status === 'failed' ? 'failed' : 'pending',
       rawProviderResponse: resp,
+      transactionUrl,
     };
   }
 

@@ -33,6 +33,10 @@ export interface InitiatePaymentResult {
   publishableKey: string;          // pass-through to the client for Moyasar.js
   amountHalala: number;
   currency: 'SAR';
+  // Moyasar hosted-checkout URL. When present the frontend must redirect the
+  // user here instead of rendering the Moyasar.js embedded form. Absent in
+  // demo mode and for bank-transfer flows.
+  transactionUrl?: string;
   // True when the backend is running with no Moyasar credentials and the
   // DemoPaymentProvider is in effect. The frontend renders a
   // "simulate successful payment" button instead of the Moyasar.js form.
@@ -140,6 +144,7 @@ export class PaymentsService {
 
     // Call the provider. Skip for bank transfer (no online charging).
     let providerPaymentId = 'pending-bank-transfer';
+    let transactionUrl: string | undefined;
     if ((params.method ?? 'moyasar_card') !== 'bank_transfer') {
       const provider = getPaymentProvider();
       const result = await provider.initiatePayment({
@@ -148,8 +153,10 @@ export class PaymentsService {
         invoiceUuid: invoice.uuid,
         ownerId: params.userId,
         callbackUrl: params.callbackUrl,
+        method: params.method,
       });
       providerPaymentId = result.providerPaymentId;
+      transactionUrl = result.transactionUrl;
       payment.moyasarPaymentId = providerPaymentId;
       payment.rawProviderPayload = result.rawProviderResponse;
       await payment.save();
@@ -162,6 +169,7 @@ export class PaymentsService {
       publishableKey: config.moyasar.publishableKey,
       amountHalala: totalHalala,
       currency: 'SAR',
+      transactionUrl,
       demoMode: isDemoProvider(),
     };
   }
