@@ -11,7 +11,7 @@ export class PricingPageController {
       // Hint to CDN / fetch cache. The frontend is the primary cache (ISR);
       // this header is belt-and-braces in case anyone fetches the URL
       // directly without revalidation tagging.
-      res.setHeader('Cache-Control', 'public, max-age=60, s-maxage=300, stale-while-revalidate=600');
+      res.setHeader('Cache-Control', 'no-store');
       res.json({ success: true, data });
     } catch (err) {
       next(err);
