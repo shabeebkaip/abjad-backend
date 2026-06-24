@@ -10,6 +10,12 @@ import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { IInvoice } from '../models/invoice.model';
 import { formatHalala } from './money.util';
 
+// Standard PDF fonts (Helvetica) only support WinAnsi. Eastern Arabic digits
+// (U+0660–U+0669) used in Hijri strings must be converted to ASCII equivalents.
+function toAsciiDigits(s: string): string {
+  return s.replace(/[٠-٩]/g, (c) => String(c.charCodeAt(0) - 0x0660));
+}
+
 export async function renderInvoicePdf(invoice: IInvoice): Promise<Buffer> {
   const pdf = await PDFDocument.create();
   const font     = await pdf.embedFont(StandardFonts.Helvetica);
@@ -72,7 +78,7 @@ export async function renderInvoicePdf(invoice: IInvoice): Promise<Buffer> {
     y -= 12;
   };
   dateLabel('Issued (Greg)',  invoice.issuedAt.toISOString().slice(0, 10));
-  dateLabel('Issued (Hijri)', invoice.issuedAtHijri);
+  dateLabel('Issued (Hijri)', toAsciiDigits(invoice.issuedAtHijri));
   if (invoice.paidAt) dateLabel('Paid', invoice.paidAt.toISOString().slice(0, 10));
   dateLabel('Status', invoice.status.toUpperCase());
   if (invoice.paymentMethod) dateLabel('Method', invoice.paymentMethod.replace(/_/g, ' '));
