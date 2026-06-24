@@ -18,7 +18,8 @@
     "seed:billing": "ts-node --transpile-only scripts/seed-billing.ts",
     "seed:pricing-page": "ts-node --transpile-only scripts/seed-pricing-page.ts",
     "seed:demo-teacher": "ts-node --transpile-only scripts/seed-demo-teacher.ts",
-    "seed:qa-users": "ts-node --transpile-only scripts/seed-qa-users.ts"
+    "seed:qa-users": "ts-node --transpile-only scripts/seed-qa-users.ts",
+    "seed:bullets": "ts-node --transpile-only scripts/seed-plan-bullets.ts"
   },
   "repository": {
     "type": "git",

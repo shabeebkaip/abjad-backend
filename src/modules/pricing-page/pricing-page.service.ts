@@ -178,11 +178,14 @@ function planFromDoc(
 
   let savings: PricingPagePlan['savings'] = null;
   if (monthlyEquivalent != null && months > 1) {
-    const yearlyAtMonthly = monthlyEquivalent * 12;
-    const yearlyAtThisPlan = doc.priceHalala * (12 / months);
-    const vsMonthlyHalala = Math.round(yearlyAtMonthly - yearlyAtThisPlan);
+    // Savings for this specific commitment period (what the user actually saves on this purchase)
+    const periodAtMonthly = monthlyEquivalent * months;
+    const vsMonthlyHalala = Math.round(periodAtMonthly - doc.priceHalala);
     if (vsMonthlyHalala > 0) {
-      const percent = Math.round((vsMonthlyHalala / yearlyAtMonthly) * 100);
+      // Percent badge on the toggle still uses annualised comparison for apples-to-apples across durations
+      const yearlyAtMonthly = monthlyEquivalent * 12;
+      const yearlyAtThisPlan = doc.priceHalala * (12 / months);
+      const percent = Math.round(((yearlyAtMonthly - yearlyAtThisPlan) / yearlyAtMonthly) * 100);
       savings = { vsMonthlyHalala, percent };
     }
   }

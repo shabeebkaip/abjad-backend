@@ -79,7 +79,7 @@ export class PaymentsService {
         throw AppError.conflict('You already have an active subscription on this plan');
       }
       throw AppError.conflict(
-        `You already have a ${existing.status} subscription. Cancel or change plan from /billing first.`,
+        `You already have an ${existing.status} subscription. Cancel or change plan from /billing first.`,
       );
     }
 
