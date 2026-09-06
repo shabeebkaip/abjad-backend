@@ -9,13 +9,29 @@ import rateLimit from 'express-rate-limit';
 
 /**
  * OTP limiter: 5 requests per 10 minutes
- * Applied to: POST /auth/send-otp, POST /auth/verify-otp
+ * Applied to: POST /auth/send-otp
  * Reason: Prevent email flood and brute force attacks
  */
 export const otpLimiter = rateLimit({
   windowMs: 10 * 60 * 1000, // 10 minutes
   max: 5,
   message: { success: false, message: 'Too many OTP requests' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (_req) => process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test',
+});
+
+/**
+ * Verify-OTP limiter: 15 requests per 10 minutes
+ * Applied to: POST /auth/verify-otp
+ * Reason: A few mistyped codes shouldn't exhaust the send-otp budget.
+ * Brute-forcing the code itself is separately protected by the
+ * account-lockout logic in auth.service (per-user attempt counter).
+ */
+export const verifyOtpLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000, // 10 minutes
+  max: 15,
+  message: { success: false, message: 'Too many verification attempts' },
   standardHeaders: true,
   legacyHeaders: false,
   skip: (_req) => process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test',

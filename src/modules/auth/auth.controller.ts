@@ -73,14 +73,8 @@ class AuthController {
         return;
       }
 
-      const deviceInfo = {
-        ...(req.body?.deviceInfo || {}),
-        userAgent: req.get('user-agent') || req.body?.deviceInfo?.userAgent,
-        ip: req.ip || req.body?.deviceInfo?.ip,
-      };
-
       const { accessToken, refreshToken: newRefreshToken, rememberDevice } =
-        await authService.refreshTokens(refreshToken, deviceInfo);
+        await authService.refreshTokens(refreshToken);
 
       const cookieOptions: CookieOptions = {
         httpOnly: config.cookie.httpOnly,
@@ -98,10 +92,10 @@ class AuthController {
         data: { accessToken },
       });
     } catch (error) {
-      // On any auth failure (rotated, expired, invalid token) clear the stale
-      // cookie so the browser stops presenting a dead session on every reload.
-      // Without this the proxy sees the cookie, lets the request through, the
-      // layout redirects to /login, the proxy bounces back — infinite loop.
+      // On any auth failure (expired / invalid token, revoked session) clear
+      // the stale cookie so the browser stops presenting a dead session on
+      // every reload. Without this the proxy sees the cookie, lets the request
+      // through, the layout redirects to /login, the proxy bounces back — loop.
       if (error instanceof AppError && error.statusCode === 401) {
         res.clearCookie(config.cookie.refreshTokenName, {
           httpOnly: true,
@@ -112,10 +106,6 @@ class AuthController {
       }
       next(error);
     }
-  }
-
-  async refreshTokens(req: Request, res: Response, next: NextFunction) {
-    return this.refresh(req, res, next);
   }
 
   async logout(req: Request, res: Response, next: NextFunction) {

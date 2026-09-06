@@ -5,7 +5,7 @@ import { Router } from 'express';
 import authController from './auth.controller';
 import { validateSendOtp, validateVerifyOtp } from './auth.validation';
 import { authenticate } from '../../middlewares/auth';
-import { otpLimiter, refreshLimiter } from '../../middlewares/rateLimiter';
+import { otpLimiter, verifyOtpLimiter, refreshLimiter } from '../../middlewares/rateLimiter';
 
 const router: Router = Router();
 
@@ -13,7 +13,7 @@ const router: Router = Router();
 router.post('/send-otp', otpLimiter, validateSendOtp, authController.sendOtp);
 
 // POST /auth/verify-otp
-router.post('/verify-otp', otpLimiter, validateVerifyOtp, authController.verifyOtp);
+router.post('/verify-otp', verifyOtpLimiter, validateVerifyOtp, authController.verifyOtp);
 
 // POST /auth/refresh
 router.post('/refresh', refreshLimiter, authController.refresh);

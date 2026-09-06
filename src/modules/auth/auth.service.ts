@@ -181,14 +181,12 @@ class AuthService {
   }
 
   /**
-   * Refresh tokens with reuse detection and rotation
+   * Refresh tokens — idempotent, no rotation.
    * - Verifies refresh token signature
-   * - Checks if session exists (reuse detection)
-   * - Revokes all sessions if reuse attack detected
-   * - Revokes old session and issues new tokens
-   * - Creates new session with new refresh token hash
+   * - Checks the session exists and isn't revoked
+   * - Issues a new access token; the same refresh token is returned as-is
    */
-  async refreshTokens(refreshToken: string, _deviceInfo?: { userAgent?: string; ip?: string; platform?: string }): Promise<{ accessToken: string; refreshToken: string; rememberDevice: boolean }> {
+  async refreshTokens(refreshToken: string): Promise<{ accessToken: string; refreshToken: string; rememberDevice: boolean }> {
     // 1. Verify JWT signature
     let payload: JwtPayload;
     try {
@@ -202,10 +200,7 @@ class AuthService {
     const session = await authRepository.findSession(hash);
 
     if (!session || session.isRevoked) {
-      // Token not found or already rotated — most likely a double-request race
-      // (e.g. React Strict Mode, network retry, or tab race). Reject this request
-      // without nuking all sessions so the user's other valid sessions survive.
-      throw AppError.unauthorized('Session not found or already rotated. Please login again.');
+      throw AppError.unauthorized('Session not found or already revoked. Please login again.');
     }
 
     // 2b. Validate the user still exists and is active. JWT signature alone
@@ -225,37 +220,17 @@ class AuthService {
       throw AppError.forbidden(`Account is ${user.status}.`);
     }
 
-    // 3. Revoke old session
-    await authRepository.revokeSession(session._id!.toString());
-
-    // 4. Issue new tokens — preserve rememberDevice choice from the original session
+    // 3. Issue a new access token only — the session and refresh token stay put
     const rememberDevice = session.rememberDevice !== false;
-    const newPayload: JwtPayload = {
+    const newAccessToken = signAccessToken({
       userId: payload.userId,
       role: payload.role,
       email: payload.email,
-    };
-    const newAccessToken = signAccessToken(newPayload);
-    const newRefreshToken = signRefreshToken(newPayload, rememberDevice ? '30d' : '1d');
-
-    // 5. Create new session — same TTL as original
-    const sessionTtlMs = rememberDevice
-      ? 30 * 24 * 60 * 60 * 1000
-      : 24 * 60 * 60 * 1000;
-    const expiresAt = new Date(Date.now() + sessionTtlMs);
-    const newTokenHash = hashToken(newRefreshToken);
-    await authRepository.createSession({
-      userId: payload.userId,
-      refreshTokenHash: newTokenHash,
-      deviceInfo: session.deviceInfo,
-      ipAddress: session.deviceInfo?.ip || session.ipAddress || 'unknown',
-      expiresAt,
-      rememberDevice,
     });
 
     return {
       accessToken: newAccessToken,
-      refreshToken: newRefreshToken,
+      refreshToken,
       rememberDevice,
     };
   }
