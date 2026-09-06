@@ -1,0 +1,82 @@
+name: Deploy backend
+
+on:
+  push:
+    branches: [main]
+
+# Serialize deploys so two pushes can't clobber the server mid-deploy.
+concurrency:
+  group: deploy-abjad-backend
+  cancel-in-progress: false
+
+jobs:
+  # 1) Build gate — if this fails, deploy is skipped and notify fires.
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10 # no packageManager pin in this repo; lockfile is v9.0 (pnpm 9/10 compatible)
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build
+
+  # 2) Deploy — runs ONLY when build succeeded.
+  #    `needs: build` already skips this job if build fails; `if: success()`
+  #    makes that guarantee explicit. Nothing on the server changes unless
+  #    the build above was green.
+  deploy:
+    needs: build
+    if: success()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -e
+            cd /var/www/abjad-backend
+            git fetch origin main
+            git reset --hard origin/main
+            pnpm install --frozen-lockfile
+            pnpm run build
+            pm2 restart abjad-backend
+            pm2 save
+
+  # 3) Notify — runs ONLY when the build failed (never on success).
+  notify:
+    needs: build
+    if: failure()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send failure email
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          from: Abjad CI <${{ secrets.MAIL_USERNAME }}>
+          to: ${{ secrets.MAIL_TO }}
+          subject: "❌ Build failed: abjad-backend (${{ github.ref_name }})"
+          body: |
+            Build failed for abjad-backend — production was NOT deployed.
+
+            Repo:   ${{ github.repository }}
+            Branch: ${{ github.ref_name }}
+            Commit: ${{ github.sha }}
+            Actor:  ${{ github.actor }}
+            Run:    ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
