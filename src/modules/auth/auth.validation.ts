@@ -1,7 +1,9 @@
 import { z } from 'zod';
 import { validate } from '../../utils/validate.util';
 
-const emailSchema = z.string().email('Invalid email address').toLowerCase();
+// max(254) — RFC 5321 max email length. Bounds the input so a 5000+ char
+// local-part can't reach the DB / bcrypt path (LOGIN-008).
+const emailSchema = z.string().max(254, 'Email is too long').email('Invalid email address').toLowerCase();
 
 // Request body schemas
 export const sendOtpSchema = z.object({
