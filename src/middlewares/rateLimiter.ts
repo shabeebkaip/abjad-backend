@@ -6,15 +6,28 @@
  */
 
 import rateLimit from 'express-rate-limit';
+import type { Request } from 'express';
+
+// Key OTP limiters by EMAIL, not IP. Schools/offices sit behind a single
+// shared IP (NAT), so IP-keying lets one busy network exhaust the budget and
+// lock out everyone else on it (Concern #6). The email is the resource being
+// protected, so cap per-email. Fall back to IP only when the email is absent
+// (malformed request). Gross cross-email abuse from one IP is still caught by
+// the global 600/15min IP limiter in app.ts.
+const emailKey = (req: Request): string => {
+  const email = typeof req.body?.email === 'string' ? req.body.email.toLowerCase().trim() : '';
+  return email || req.ip || 'unknown';
+};
 
 /**
- * OTP limiter: 5 requests per 10 minutes
+ * OTP limiter: 5 requests per 10 minutes PER EMAIL
  * Applied to: POST /auth/send-otp
  * Reason: Prevent email flood and brute force attacks
  */
 export const otpLimiter = rateLimit({
   windowMs: 10 * 60 * 1000, // 10 minutes
   max: 5,
+  keyGenerator: emailKey,
   message: { success: false, message: 'Too many OTP requests' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -31,6 +44,7 @@ export const otpLimiter = rateLimit({
 export const verifyOtpLimiter = rateLimit({
   windowMs: 10 * 60 * 1000, // 10 minutes
   max: 15,
+  keyGenerator: emailKey, // per-email, not per-IP (shared-IP schools) — Concern #6
   message: { success: false, message: 'Too many verification attempts' },
   standardHeaders: true,
   legacyHeaders: false,
