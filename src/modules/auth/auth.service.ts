@@ -29,6 +29,13 @@ class AuthService {
       throw AppError.tooManyRequests(`Account temporarily locked due to too many failed attempts. Please try again in ${lockExpiresIn} minutes.`);
     }
 
+    // Only signup may create a new account. login / reset for an unknown email
+    // must be rejected here — otherwise the OTP flow proceeds and verifyOtp
+    // would silently create a blank, nameless account (LOGIN-002).
+    if (purpose !== 'signup' && !user) {
+      throw AppError.notFound('No account found for this email. Please sign up first.');
+    }
+
     // Generate + hash OTP
     const otp = generateOtp();
     const hash = await hashOtp(otp);
@@ -98,6 +105,12 @@ class AuthService {
     const isNewUser = !user;
 
     if (!user) {
+      // Defense in depth: only signup creates accounts. A login/reset that
+      // reaches here with no user (e.g. a direct verify-otp API call that
+      // bypassed sendOtp's guard) must NOT create a blank account.
+      if (purpose !== 'signup') {
+        throw AppError.notFound('No account found for this email. Please sign up first.');
+      }
       // Create new user on signup — persist name fields from registration form
       user = await authRepository.createUser({
         email,
