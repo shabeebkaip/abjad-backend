@@ -5,11 +5,95 @@
 import { Request, Response, NextFunction, CookieOptions } from 'express';
 import authService from './auth.service';
 import authRepository from './auth.repository';
-import { SendOtpDTO, VerifyOtpDTO } from './auth.types';
+import { SendOtpDTO, VerifyOtpDTO, LoginDTO } from './auth.types';
 import { config } from '../../config';
 import { AppError } from '../../utils/app-error.util';
 
 class AuthController {
+  /**
+   * POST /auth/login — email + password login for teacher/school.
+   * Sets the SAME __Host-abjad_session refresh cookie verify-otp does (task
+   * 1.3 gotcha: must go through this controller's cookie path, not admin's
+   * JSON-body-token response shape).
+   */
+  async login(req: Request, res: Response, next: NextFunction) {
+    try {
+      const deviceInfo = {
+        ...(req.body?.deviceInfo || {}),
+        userAgent: req.get('user-agent') || req.body?.deviceInfo?.userAgent,
+        ip: req.ip || req.body?.deviceInfo?.ip,
+      };
+      const data: LoginDTO = { ...req.body, deviceInfo };
+      const [authResponse, refreshToken, rememberDevice] = await authService.login(data);
+
+      const cookieOptions: CookieOptions = {
+        httpOnly: config.cookie.httpOnly,
+        secure: config.cookie.secure,
+        sameSite: config.cookie.sameSite,
+      };
+      if (rememberDevice) {
+        cookieOptions.maxAge = config.cookie.maxAge;
+      }
+      res.cookie(config.cookie.refreshTokenName, refreshToken, cookieOptions);
+
+      res.status(200).json({
+        success: true,
+        message: 'Logged in successfully',
+        data: {
+          user: authResponse.user,
+          tokens: authResponse.tokens,
+          isNewUser: authResponse.isNewUser,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /auth/set-password — authenticated. Only for users with no
+   * password yet (OTP-only accounts adding one).
+   */
+  async setPassword(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = (req as any).user?.userId;
+      await authService.setPassword(userId, req.body.newPassword);
+      res.status(200).json({ success: true, message: 'Password set successfully' });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /auth/change-password — authenticated. Requires currentPassword.
+   */
+  async changePassword(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = (req as any).user?.userId;
+      await authService.changePassword(userId, req.body.currentPassword, req.body.newPassword);
+      res.status(200).json({ success: true, message: 'Password changed successfully' });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /auth/reset-password — forgot-password flow. Code-based: a valid
+   * OTP with purpose='reset' + a new password. No session is issued here —
+   * the caller logs in separately with the new password afterward.
+   */
+  async resetPassword(req: Request, res: Response, next: NextFunction) {
+    try {
+      await authService.resetPassword(req.body);
+      res.status(200).json({
+        success: true,
+        message: 'Password reset successfully. You can now log in with your new password.',
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async sendOtp(req: Request, res: Response, next: NextFunction) {
     try {
       const data: SendOtpDTO = req.body;

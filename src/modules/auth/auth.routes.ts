@@ -3,9 +3,16 @@
 
 import { Router } from 'express';
 import authController from './auth.controller';
-import { validateSendOtp, validateVerifyOtp } from './auth.validation';
+import {
+  validateSendOtp,
+  validateVerifyOtp,
+  validateLogin,
+  validateSetPassword,
+  validateChangePassword,
+  validateResetPassword,
+} from './auth.validation';
 import { authenticate } from '../../middlewares/auth';
-import { otpLimiter, verifyOtpLimiter, refreshLimiter } from '../../middlewares/rateLimiter';
+import { otpLimiter, verifyOtpLimiter, refreshLimiter, loginLimiter, strictLimiter } from '../../middlewares/rateLimiter';
 
 const router: Router = Router();
 
@@ -14,6 +21,18 @@ router.post('/send-otp', otpLimiter, validateSendOtp, authController.sendOtp);
 
 // POST /auth/verify-otp
 router.post('/verify-otp', verifyOtpLimiter, validateVerifyOtp, authController.verifyOtp);
+
+// POST /auth/login — email + password (teacher/school only; admins use /admin/auth/login)
+router.post('/login', loginLimiter, validateLogin, authController.login);
+
+// POST /auth/set-password — authenticated, only if no password set yet
+router.post('/set-password', authenticate, strictLimiter, validateSetPassword, authController.setPassword);
+
+// POST /auth/change-password — authenticated, requires currentPassword
+router.post('/change-password', authenticate, strictLimiter, validateChangePassword, authController.changePassword);
+
+// POST /auth/reset-password — forgot-password: valid reset OTP + new password
+router.post('/reset-password', strictLimiter, validateResetPassword, authController.resetPassword);
 
 // POST /auth/refresh
 router.post('/refresh', refreshLimiter, authController.refresh);

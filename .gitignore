@@ -39,10 +39,14 @@ temp/
 tmp/
 
 # Testing
+# NOTE (2026-09-20): *.test.ts/*.test.js used to be blanket-ignored here,
+# which silently kept the ENTIRE test suite (all __tests__ dirs, 165 tests
+# across 8 files) out of version control — nothing was ever reviewable.
+# dist/ (compiled output, incl. any compiled *.test.js) is already ignored
+# above, so this was pure redundant over-matching. Removed so source tests
+# are tracked like any other source file.
 coverage/
 .nyc_output
-*.test.js
-*.test.ts
 
 # IDE and editors
 .vscode/

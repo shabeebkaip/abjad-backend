@@ -1,8 +1,8 @@
 import bcrypt from 'bcrypt';
 import { adminRepository } from './admin.repository';
 import { AppError } from '../../utils/app-error.util';
-import { signAccessToken, signRefreshToken, hashToken, JwtPayload } from '../../utils/jwt.util';
 import authRepository from '../auth/auth.repository';
+import authService from '../auth/auth.service';
 import User from '../../models/user.model';
 import { sendEmail } from '../../utils/email.util';
 import { tplProfileApproved, tplProfileRejected, tplSchoolVerified, tplSchoolRejected } from '../../utils/email-templates.util';
@@ -36,23 +36,15 @@ export class AdminService {
       throw AppError.unauthorized('Invalid email or password');
     }
 
-    await authRepository.resetFailedLogins(email);
-    await authRepository.updateLastLogin(user._id!.toString());
-
-    const payload: JwtPayload = {
-      userId: user._id!.toString(),
-      role: user.role,
-      email: user.email,
-    };
-    const accessToken = signAccessToken(payload);
-    const refreshToken = signRefreshToken(payload);
-
-    await authRepository.createSession({
-      userId: user._id!.toString(),
-      refreshTokenHash: hashToken(refreshToken),
-      deviceInfo: {},
+    // Shared session-issuance helper (task 1.2) — resets failed logins,
+    // updates lastLogin, signs access+refresh, persists the session. Admin
+    // keeps its existing 30d-always behavior via rememberDevice: true; the
+    // refresh token is used only to hash+store the session — admin's
+    // controller returns accessToken in the JSON body (not a cookie), so the
+    // raw refresh token is intentionally discarded here.
+    const { accessToken } = await authService.issueSession(user, {
+      rememberDevice: true,
       ipAddress: 'admin',
-      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
     });
 
     return {

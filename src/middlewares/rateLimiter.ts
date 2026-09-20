@@ -67,8 +67,27 @@ export const refreshLimiter = rateLimit({
 });
 
 /**
- * Strict limiter for sensitive operations (future use)
- * Example: Password reset, account deletion
+ * Login limiter: 10 requests per 10 minutes PER EMAIL
+ * Applied to: POST /auth/login (password login)
+ * Reason: mirrors otpLimiter/verifyOtpLimiter's per-email keying — schools
+ * share NAT IPs, so IP-keying would let one busy network's failures lock out
+ * every other school on it. The per-user account lock (5 failed → 15min,
+ * shared with OTP) is the primary brute-force defense; this is a secondary
+ * ceiling against high-volume credential stuffing across many emails.
+ */
+export const loginLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000, // 10 minutes
+  max: 10,
+  keyGenerator: emailKey,
+  message: { success: false, message: 'Too many login attempts' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (_req) => process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test',
+});
+
+/**
+ * Strict limiter for sensitive operations.
+ * Applied to: password reset, set-password, change-password.
  */
 export const strictLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
@@ -76,4 +95,5 @@ export const strictLimiter = rateLimit({
   message: { success: false, message: 'Too many attempts. Try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (_req) => process.env.NODE_ENV === 'test',
 });

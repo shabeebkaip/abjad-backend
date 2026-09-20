@@ -29,6 +29,22 @@ class AuthRepository {
   }
 
   /**
+   * Find user by email with the (select:false) password hash included.
+   * Used by password login — never by the OTP path.
+   */
+  async findUserWithPassword(email: string) {
+    return User.findOne({ email: email.toLowerCase() }).select('+password');
+  }
+
+  /**
+   * Find user by ID with the (select:false) password hash included.
+   * Used by set-password / change-password.
+   */
+  async findUserByIdWithPassword(id: string) {
+    return User.findById(id).select('+password');
+  }
+
+  /**
    * Create a new user on first signup
    */
   async createUser(data: {
@@ -38,6 +54,8 @@ class AuthRepository {
     lastName?: string;
     schoolName?: string;
     language?: string;
+    // Already-hashed password (DECISIONS LOCKED #1 — required at signup).
+    passwordHash?: string;
   }) {
     const user = new User({
       email: data.email.toLowerCase(),
@@ -46,6 +64,7 @@ class AuthRepository {
       lastName: data.lastName,
       schoolName: data.schoolName,
       language: data.language || 'ar',
+      password: data.passwordHash,
       status: 'active',
       isPhoneVerified: false,
       isEmailVerified: true,
@@ -87,14 +106,17 @@ class AuthRepository {
   }
 
   /**
-   * Atomically increment failed login attempts
+   * Increment failed login attempts AND apply the 15-min lock once the count
+   * reaches 5 — delegates to the User schema's incrementFailedAttempts()
+   * (user.model.ts) instead of a raw $inc, which used to bump the counter
+   * but never actually set lockedUntil (bug: admin login's 5-strikes lock
+   * was a no-op; fixed here since this is the one shared call site behind
+   * admin login AND the new teacher/school password login).
    */
   async incrementFailedLogins(email: string) {
-    return User.findOneAndUpdate(
-      { email: email.toLowerCase() },
-      { $inc: { failedLoginAttempts: 1 } },
-      { new: true }
-    );
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) return null;
+    return user.incrementFailedAttempts();
   }
 
   /**

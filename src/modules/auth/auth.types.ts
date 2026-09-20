@@ -25,6 +25,9 @@ export interface VerifyOtpDTO {
     platform?: string;
   };
   rememberDevice?: boolean;
+  // Required when purpose === 'signup' (DECISIONS LOCKED #1) — hashed before
+  // being persisted via createUser. Validated by verifyOtpSchema's superRefine.
+  password?: string;
 }
 
 export interface RefreshTokenDTO {
@@ -33,6 +36,34 @@ export interface RefreshTokenDTO {
 
 export interface LogoutDTO {
   allDevices?: boolean;
+}
+
+// ── Password auth DTOs (Milestone 1) ──────────────
+
+export interface LoginDTO {
+  email: string;
+  password: string;
+  rememberDevice?: boolean;
+  deviceInfo?: {
+    userAgent?: string;
+    ip?: string;
+    platform?: string;
+  };
+}
+
+export interface SetPasswordDTO {
+  newPassword: string;
+}
+
+export interface ChangePasswordDTO {
+  currentPassword: string;
+  newPassword: string;
+}
+
+export interface ResetPasswordDTO {
+  email: string;
+  code: string;
+  newPassword: string;
 }
 
 // ── Response DTOs ─────────────────────────────────
