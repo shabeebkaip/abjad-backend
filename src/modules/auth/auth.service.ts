@@ -9,7 +9,7 @@ import { config } from '../../config';
 import { generateOtp, hashOtp, otpExpiry, verifyOtp as verifyOtpHash } from '../../utils/otp.util';
 import { sendOtpEmail } from '../../utils/otp-sender.util';
 import { signAccessToken, signRefreshToken, verifyRefreshToken, hashToken, JwtPayload } from '../../utils/jwt.util';
-import { hashPassword, comparePassword } from '../../utils/password.util';
+import { hashPassword, comparePassword, DUMMY_PASSWORD_HASH } from '../../utils/password.util';
 import { AppError } from '../../utils/app-error.util';
 import type { UserDocument } from '../../models/user.model';
 
@@ -63,15 +63,26 @@ class AuthService {
    * both the refresh-token TTL and the cookie maxAge the controller applies;
    * admin login pins it to true (30d) via the param, preserving its existing
    * behavior unchanged.
+   *
+   * W3 — also the ONE shared guard against issuing a session for a
+   * suspended/blocked account. Credentials (password or OTP) are already
+   * verified by the time any caller reaches here, so this is the last gate
+   * before a token is minted — verifyOtp (signup + login) and the new
+   * password login both funnel through it. Same policy + message wording as
+   * /me and /refresh (auth.controller.ts / auth.service.refreshTokens).
    */
   async issueSession(
-    user: Pick<UserDocument, 'email' | 'role'> & { _id?: unknown },
+    user: Pick<UserDocument, 'email' | 'role' | 'status'> & { _id?: unknown },
     opts: {
       rememberDevice?: boolean;
       deviceInfo?: { userAgent?: string; ip?: string; platform?: string };
       ipAddress?: string;
     } = {},
   ): Promise<{ accessToken: string; refreshToken: string; rememberDevice: boolean }> {
+    if (user.status === 'suspended' || user.status === 'blocked') {
+      throw AppError.forbidden(`Account is ${user.status}.`);
+    }
+
     const rememberDevice = opts.rememberDevice !== false;
     const userId = (user._id as { toString(): string }).toString();
 
@@ -223,20 +234,25 @@ class AuthService {
     const invalidCredentials = () => AppError.unauthorized('Invalid email or password');
 
     const user = await authRepository.findUserWithPassword(email);
-    if (!user || user.role === 'admin') {
-      // Unknown email AND admin accounts (wrong door) get the same generic
-      // error — don't leak which case it was.
+    if (!user || user.role === 'admin' || !user.password) {
+      // Unknown email, admin accounts (wrong door), AND OTP-only users (no
+      // password set) all get the same generic error — don't leak which
+      // case it was. W1: also run a REAL bcrypt.compare against a fixed
+      // dummy hash here so these early-return branches take the same
+      // latency as the wrong-password branch below — otherwise response
+      // time itself becomes a side-channel an attacker can use to tell
+      // "no such account" apart from "account exists". The result is
+      // discarded; only the timing matters.
+      await comparePassword(password, DUMMY_PASSWORD_HASH);
       throw invalidCredentials();
     }
 
-    // Shared lock — 5 failed attempts of EITHER kind (OTP or password) locks
-    // both methods for 15 min (DECISIONS LOCKED risk #2).
+    // Each auth method has its own attempt threshold (password: 5, OTP: 3
+    // wrong codes for the same purpose) but ONE shared lockedUntil — hitting
+    // either threshold locks BOTH methods for 15 min (assertAccountNotLocked
+    // is called by sendOtp/verifyOtp/login/resetPassword alike). See
+    // docs/AUTH_MODULE_CONNECTIONS.md for the full writeup.
     this.assertAccountNotLocked(user);
-
-    if (!user.password) {
-      // OTP-only user — never reveal that no password is set.
-      throw invalidCredentials();
-    }
 
     const match = await comparePassword(password, user.password);
     if (!match) {
@@ -272,8 +288,15 @@ class AuthService {
 
   /**
    * Change an existing password — requires the correct current password.
+   *
+   * W2 — rotating the password revokes every OTHER session for this user
+   * (stolen-session mitigation: someone with a hijacked refresh token loses
+   * it the moment the legitimate owner changes their password). The
+   * caller's OWN current session is deliberately kept alive — `currentRefreshToken`
+   * (the raw token from their cookie, passed by the controller) is excluded
+   * so changing your own password doesn't log you out of the tab you did it from.
    */
-  async changePassword(userId: string, currentPassword: string, newPassword: string): Promise<void> {
+  async changePassword(userId: string, currentPassword: string, newPassword: string, currentRefreshToken?: string): Promise<void> {
     const user = await authRepository.findUserByIdWithPassword(userId);
     if (!user) throw AppError.notFound('User not found');
     if (!user.password) throw AppError.badRequest('No password set yet. Use set-password instead.');
@@ -283,6 +306,9 @@ class AuthService {
 
     user.password = await hashPassword(newPassword);
     await user.save();
+
+    const exceptHash = currentRefreshToken ? hashToken(currentRefreshToken) : undefined;
+    await authRepository.revokeAllSessionsExcept(userId, exceptHash);
   }
 
   /**
@@ -293,6 +319,11 @@ class AuthService {
    * other OTP action. Once verified, also clears any lingering
    * failedLoginAttempts counter (e.g. left over from a lock that already
    * expired naturally) so the next login starts clean.
+   *
+   * W2 — a successful reset is treated as post-compromise recovery: it
+   * revokes EVERY existing session for this user (unlike changePassword,
+   * there's no "current session" to spare here — the caller only has an
+   * emailed code, not an active login).
    */
   async resetPassword(dto: ResetPasswordDTO): Promise<void> {
     const { email, code, newPassword } = dto;
@@ -309,6 +340,7 @@ class AuthService {
     user.password = await hashPassword(newPassword);
     await user.save();
     await authRepository.resetFailedLogins(email);
+    await authRepository.revokeAllSessions(user._id!.toString());
   }
 
   /**

@@ -23,6 +23,26 @@ export const connectDB = async (): Promise<void> => {
   isConnected = db.connections[0].readyState === 1;
   console.log('✅ MongoDB connected successfully');
 
+  // Bug 2 fix — a leftover unique index `phone_1_purpose_1` from the
+  // pre-email-OTP era blocks concurrent OTPs (two different emails can't
+  // both have a null `phone` under a unique index). syncIndexes() drops any
+  // index not declared on the current schema and creates any that's
+  // missing, converging the live collection to exactly what
+  // otp-code.model.ts declares: the TTL index on `expiresAt` and the unique
+  // `{email, purpose}` index. Scoped to OtpCode ONLY — do NOT syncIndexes()
+  // every model here, some collections have indexes created by ad-hoc
+  // scripts/migrations that aren't mirrored in their schema and would be
+  // dropped. Idempotent: a no-op once the stale index is gone.
+  try {
+    const OtpCode = (await import('./models/otp-code.model')).default;
+    const result = await OtpCode.syncIndexes();
+    if (result.length > 0) {
+      console.log('[migration] OtpCode.syncIndexes() changed:', result);
+    }
+  } catch (err) {
+    console.error('[migration] OtpCode.syncIndexes() failed:', err);
+  }
+
   // One-shot migration: any user still on the legacy "pending" default needs
   // to be flipped to "active". OTP is the email-verification step, so a
   // pending status was a footgun — /me would 403 and the user would be

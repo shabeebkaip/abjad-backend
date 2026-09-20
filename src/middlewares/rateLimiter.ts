@@ -5,7 +5,7 @@
  * - Global: Catch-all for all API endpoints
  */
 
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import type { Request } from 'express';
 
 // Key OTP limiters by EMAIL, not IP. Schools/offices sit behind a single
@@ -14,9 +14,14 @@ import type { Request } from 'express';
 // protected, so cap per-email. Fall back to IP only when the email is absent
 // (malformed request). Gross cross-email abuse from one IP is still caught by
 // the global 600/15min IP limiter in app.ts.
+// The IP fallback MUST go through express-rate-limit's ipKeyGenerator —
+// raw req.ip would group an entire IPv6 /64 (billions of addresses one
+// residential customer can rotate through) as a single key, defeating the
+// limiter, and the library warns loudly (ERR_ERL_KEY_GEN_IPV6) if you don't.
 const emailKey = (req: Request): string => {
   const email = typeof req.body?.email === 'string' ? req.body.email.toLowerCase().trim() : '';
-  return email || req.ip || 'unknown';
+  if (email) return email;
+  return req.ip ? ipKeyGenerator(req.ip) : 'unknown';
 };
 
 /**

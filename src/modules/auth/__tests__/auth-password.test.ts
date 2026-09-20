@@ -14,6 +14,10 @@ import User from '../../../models/user.model';
 import Session from '../../../models/session.model';
 import { hashOtp, otpExpiry } from '../../../utils/otp.util';
 import { hashPassword } from '../../../utils/password.util';
+import { signAccessToken, signRefreshToken, hashToken } from '../../../utils/jwt.util';
+
+// config.cookie.refreshTokenName in test/dev (NODE_ENV !== 'production').
+const REFRESH_COOKIE_NAME = 'abjad_session';
 
 const TEST_EMAIL = 'pwuser@test.com';
 const TEST_PASSWORD = 'Correct-Horse-9';
@@ -157,6 +161,29 @@ describe('POST /api/auth/login', () => {
     expect(refreshCookie).toContain('HttpOnly');
   });
 
+  it('the password-login session survives /refresh using ONLY the cookie (Plan Risk #4 — no login-loop)', async () => {
+    await createUserWithPassword(TEST_EMAIL, TEST_PASSWORD);
+    const agent = request.agent(app); // persists cookies across requests, like a browser
+
+    const loginRes = await agent.post('/api/auth/login').send({ email: TEST_EMAIL, password: TEST_PASSWORD });
+    expect(loginRes.status).toBe(200);
+    expect(loginRes.body.data.tokens.accessToken).toBeTruthy();
+
+    // No Authorization header — only the cookie the agent captured from login.
+    const refreshRes = await agent.post('/api/auth/refresh');
+    expect(refreshRes.status).toBe(200);
+    expect(refreshRes.body.data.accessToken).toBeTruthy();
+    // NOT asserting it differs from originalAccessToken: JWTs are
+    // second-granularity (iat), so a login immediately followed by a
+    // refresh within the same clock second can legitimately mint a
+    // byte-identical token — that's not a bug, just not a useful signal here.
+
+    // And the refreshed access token actually works.
+    const meRes = await agent.get('/api/auth/me').set('Authorization', `Bearer ${refreshRes.body.data.accessToken}`);
+    expect(meRes.status).toBe(200);
+    expect(meRes.body.data.email).toBe(TEST_EMAIL);
+  });
+
   it('rejects a wrong password with a generic 401', async () => {
     await createUserWithPassword(TEST_EMAIL, TEST_PASSWORD);
 
@@ -218,7 +245,16 @@ describe('POST /api/auth/login', () => {
     expect(user!.lockedUntil!.getTime()).toBeGreaterThan(Date.now());
   });
 
-  it('a password-triggered lock also blocks OTP verify (SHARED lock — cross-method)', async () => {
+  // NOTE (Bug 1, human decision): each method keeps its OWN attempt
+  // threshold — password locks at 5 failed attempts, OTP locks at 3 wrong
+  // codes for the same purpose (config.otp.maxAttempts) — there is NO
+  // single combined counter. What IS shared is the resulting `lockedUntil`:
+  // whichever method trips its own threshold first sets the one lock field
+  // on the User row, and `assertAccountNotLocked()` (auth.service.ts) is
+  // checked by sendOtp/verifyOtp/login/resetPassword alike, so the lock set
+  // by one method blocks every method until it expires. These next two
+  // tests prove that in both directions.
+  it('a PASSWORD-triggered lock (5 failed) also blocks OTP verify — shared lockedUntil, not a combined counter', async () => {
     await createUserWithPassword(TEST_EMAIL, TEST_PASSWORD);
     for (let i = 0; i < 5; i++) {
       await request(app).post('/api/auth/login').send({ email: TEST_EMAIL, password: 'wrong' });
@@ -229,6 +265,28 @@ describe('POST /api/auth/login', () => {
     const res = await request(app)
       .post('/api/auth/verify-otp')
       .send({ email: TEST_EMAIL, code: otp, purpose: 'login' });
+
+    expect(res.status).toBe(429);
+  });
+
+  it('an OTP-triggered lock (3 wrong codes) also blocks password login — the reverse direction', async () => {
+    await createUserWithPassword(TEST_EMAIL, TEST_PASSWORD);
+    const otp = '112233';
+    await plantOtp(TEST_EMAIL, 'login', otp);
+
+    // config.otp.maxAttempts is 3 — the 4th verify (any code) is the one
+    // that finds attempts >= max and applies the lock.
+    for (let i = 0; i < 4; i++) {
+      await request(app).post('/api/auth/verify-otp').send({ email: TEST_EMAIL, code: '000000', purpose: 'login' });
+    }
+
+    const user = await User.findOne({ email: TEST_EMAIL });
+    expect(user!.lockedUntil).toBeDefined();
+    expect(user!.lockedUntil!.getTime()).toBeGreaterThan(Date.now());
+
+    const res = await request(app)
+      .post('/api/auth/login')
+      .send({ email: TEST_EMAIL, password: TEST_PASSWORD }); // even the CORRECT password is now blocked
 
     expect(res.status).toBe(429);
   });
@@ -354,6 +412,38 @@ describe('POST /api/auth/change-password', () => {
       .send({ currentPassword: TEST_PASSWORD, newPassword: NEW_PASSWORD });
     expect(res.status).toBe(401);
   });
+
+  it('W2: revokes every OTHER session but keeps the caller\'s own current session usable', async () => {
+    const user = await createUserWithPassword(TEST_EMAIL, TEST_PASSWORD);
+    const payload = { userId: user._id!.toString(), role: user.role, email: user.email };
+    const accessToken = signAccessToken(payload);
+
+    // Two "devices" — minted directly (not via two real /login calls) so the
+    // tokens are guaranteed distinct even if this test runs within the same
+    // clock second (JWTs are second-granularity; different TTL strings force
+    // different `exp`, hence different token bytes/hashes, deterministically).
+    const tokenA = signRefreshToken(payload, '30d');
+    const tokenB = signRefreshToken(payload, '29d');
+    const farFuture = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    await Session.create({ userId: user._id, refreshTokenHash: hashToken(tokenA), deviceInfo: {}, ipAddress: 'test', isRevoked: false, expiresAt: farFuture, rememberDevice: true });
+    await Session.create({ userId: user._id, refreshTokenHash: hashToken(tokenB), deviceInfo: {}, ipAddress: 'test', isRevoked: false, expiresAt: farFuture, rememberDevice: true });
+
+    // Device A changes the password, presenting its own refresh cookie.
+    const changeRes = await request(app)
+      .post('/api/auth/change-password')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .set('Cookie', `${REFRESH_COOKIE_NAME}=${tokenA}`)
+      .send({ currentPassword: TEST_PASSWORD, newPassword: NEW_PASSWORD });
+    expect(changeRes.status).toBe(200);
+
+    // Device A's own session must still work.
+    const refreshA = await request(app).post('/api/auth/refresh').set('Cookie', `${REFRESH_COOKIE_NAME}=${tokenA}`);
+    expect(refreshA.status).toBe(200);
+
+    // Device B's session must be revoked.
+    const refreshB = await request(app).post('/api/auth/refresh').set('Cookie', `${REFRESH_COOKIE_NAME}=${tokenB}`);
+    expect(refreshB.status).toBe(401);
+  });
 });
 
 // ════════════════════════════════════════════════════════════
@@ -452,5 +542,69 @@ describe('POST /api/auth/reset-password', () => {
       .post('/api/auth/reset-password')
       .send({ email: TEST_EMAIL, code: '444000', newPassword: 'weak' });
     expect(res.status).toBe(400);
+  });
+
+  it('W2: revokes every existing session — an old refresh cookie is rejected at /refresh after reset', async () => {
+    await createUserWithPassword(TEST_EMAIL, TEST_PASSWORD);
+    const agent = request.agent(app);
+    const loginRes = await agent.post('/api/auth/login').send({ email: TEST_EMAIL, password: TEST_PASSWORD });
+    expect(loginRes.status).toBe(200);
+
+    // Sanity: the pre-reset session works.
+    const preRefresh = await agent.post('/api/auth/refresh');
+    expect(preRefresh.status).toBe(200);
+
+    const otp = '555000';
+    await plantOtp(TEST_EMAIL, 'reset', otp);
+    const resetRes = await request(app)
+      .post('/api/auth/reset-password')
+      .send({ email: TEST_EMAIL, code: otp, newPassword: NEW_PASSWORD });
+    expect(resetRes.status).toBe(200);
+
+    // The OLD session (same cookie the agent has held onto) must now be dead.
+    const postRefresh = await agent.post('/api/auth/refresh');
+    expect(postRefresh.status).toBe(401);
+  });
+});
+
+// ════════════════════════════════════════════════════════════
+// 5. W3 — suspended/blocked accounts rejected at BOTH login doors
+// ════════════════════════════════════════════════════════════
+
+describe('Suspended/blocked accounts are rejected at login (W3)', () => {
+  it.each(['suspended', 'blocked'] as const)('POST /auth/login rejects a %s account with 403, matching the /me wording', async (status) => {
+    await createUserWithPassword(TEST_EMAIL, TEST_PASSWORD);
+    await User.updateOne({ email: TEST_EMAIL }, { status });
+
+    const res = await request(app).post('/api/auth/login').send({ email: TEST_EMAIL, password: TEST_PASSWORD });
+
+    expect(res.status).toBe(403);
+    expect(res.body.message).toBe(`Account is ${status}.`);
+  });
+
+  it.each(['suspended', 'blocked'] as const)('POST /auth/verify-otp (purpose=login) rejects a %s account with 403', async (status) => {
+    await createOtpOnlyUser(TEST_EMAIL);
+    await User.updateOne({ email: TEST_EMAIL }, { status });
+
+    const otp = '778899';
+    await plantOtp(TEST_EMAIL, 'login', otp);
+    const res = await request(app)
+      .post('/api/auth/verify-otp')
+      .send({ email: TEST_EMAIL, code: otp, purpose: 'login' });
+
+    expect(res.status).toBe(403);
+    expect(res.body.message).toBe(`Account is ${status}.`);
+  });
+
+  it('a suspended user gets no cookie/session on either door', async () => {
+    await createUserWithPassword(TEST_EMAIL, TEST_PASSWORD);
+    await User.updateOne({ email: TEST_EMAIL }, { status: 'suspended' });
+
+    const res = await request(app).post('/api/auth/login').send({ email: TEST_EMAIL, password: TEST_PASSWORD });
+    expect(res.status).toBe(403);
+    expect(res.headers['set-cookie']).toBeUndefined();
+
+    const sessionCount = await Session.countDocuments({});
+    expect(sessionCount).toBe(0);
   });
 });

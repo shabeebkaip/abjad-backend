@@ -66,11 +66,14 @@ class AuthController {
 
   /**
    * POST /auth/change-password — authenticated. Requires currentPassword.
+   * W2: revokes every OTHER session — the caller's own refresh cookie (if
+   * present) is passed through so their current session survives.
    */
   async changePassword(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = (req as any).user?.userId;
-      await authService.changePassword(userId, req.body.currentPassword, req.body.newPassword);
+      const currentRefreshToken = req.cookies?.[config.cookie.refreshTokenName];
+      await authService.changePassword(userId, req.body.currentPassword, req.body.newPassword, currentRefreshToken);
       res.status(200).json({ success: true, message: 'Password changed successfully' });
     } catch (error) {
       next(error);

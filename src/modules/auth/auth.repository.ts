@@ -255,6 +255,20 @@ class AuthRepository {
   }
 
   /**
+   * Revoke every session for a user EXCEPT one (by refresh-token hash).
+   * Used by change-password (W2) — rotating the password should kill every
+   * OTHER device/session, but not the one the user is actively using to make
+   * the change. Falls back to revoking everything if no hash is given (e.g.
+   * the caller has no refresh cookie — safe default, not a broken one).
+   */
+  async revokeAllSessionsExcept(userId: string, exceptRefreshTokenHash?: string) {
+    return Session.updateMany(
+      { userId, ...(exceptRefreshTokenHash ? { refreshTokenHash: { $ne: exceptRefreshTokenHash } } : {}) },
+      { isRevoked: true }
+    );
+  }
+
+  /**
    * Get all active sessions for a user (non-revoked, non-expired)
    */
   async getUserSessions(userId: string) {
