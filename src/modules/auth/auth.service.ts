@@ -163,7 +163,11 @@ class AuthService {
     const rememberDevice = dto.rememberDevice !== false;
 
     // 0. Check if ACCOUNT is locked (defensive — should also be blocked in sendOtp)
-    let user = await authRepository.findUserByEmail(email);
+    // findUserWithPassword (not findUserByEmail) so mapToAuthUserDTO's
+    // hasPassword is accurate for an existing user logging in via OTP —
+    // findUserByEmail's default select:false would otherwise always read
+    // as hasPassword:false regardless of the real value.
+    let user = await authRepository.findUserWithPassword(email);
     this.assertAccountNotLocked(user);
 
     // 1-4. Verify + consume the OTP (shared with resetPassword)
@@ -363,6 +367,7 @@ class AuthService {
       isProfileComplete: user.isProfileComplete,
       profileStep: user.profileStep,
       language: user.language,
+      hasPassword: !!user.password,
     };
   }
 

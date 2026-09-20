@@ -87,11 +87,13 @@ class AuthRepository {
     role: 'teacher' | 'school' | 'admin',
     nameFields?: { firstName?: string; lastName?: string; schoolName?: string },
   ) {
+    // +password so the caller's mapToAuthUserDTO (hasPassword) stays
+    // accurate for this branch too, same reasoning as findUserWithPassword.
     return User.findOneAndUpdate(
       { email: email.toLowerCase() },
       { role, ...nameFields },
       { new: true }
-    );
+    ).select('+password');
   }
 
   /**

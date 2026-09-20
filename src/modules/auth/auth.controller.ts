@@ -244,7 +244,9 @@ class AuthController {
     try {
       const jwtUser = (req as any).user as { userId: string; email: string; role: string };
 
-      const dbUser = await authRepository.findUserById(jwtUser.userId);
+      // findUserByIdWithPassword (not findUserById) — /me needs to compute
+      // hasPassword below; default select:false would otherwise hide it.
+      const dbUser = await authRepository.findUserByIdWithPassword(jwtUser.userId);
 
       // Strict mode — if the User row is gone but the JWT is still valid,
       // the session is effectively orphaned. Clear the cookie and return 401
@@ -290,6 +292,8 @@ class AuthController {
           isProfileComplete: dbUser.isProfileComplete ?? false,
           profileStep: dbUser.profileStep ?? 'basic',
           language: dbUser.language ?? 'ar',
+          // Never the hash — just whether one exists (Settings: Set vs Change password).
+          hasPassword: !!dbUser.password,
         },
       });
     } catch (error) {

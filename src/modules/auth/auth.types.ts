@@ -91,4 +91,7 @@ export interface AuthUserDTO {
   isProfileComplete: boolean;
   profileStep: string;
   language: string;
+  // Settings needs to know "Set password" vs "Change password" — boolean
+  // only, computed as !!user.password. NEVER the hash itself.
+  hasPassword: boolean;
 }

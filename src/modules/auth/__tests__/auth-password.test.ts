@@ -624,3 +624,52 @@ describe('Suspended/blocked accounts are rejected at login (W3)', () => {
     expect(sessionCount).toBe(0);
   });
 });
+
+// ════════════════════════════════════════════════════════════
+// 6. GET /api/auth/me — hasPassword (M3 settings: Set vs Change)
+// ════════════════════════════════════════════════════════════
+
+describe('GET /api/auth/me — hasPassword', () => {
+  it('returns hasPassword: true for a user with a password set, without leaking the hash', async () => {
+    await createUserWithPassword(TEST_EMAIL, TEST_PASSWORD);
+    const loginRes = await request(app).post('/api/auth/login').send({ email: TEST_EMAIL, password: TEST_PASSWORD });
+    const accessToken = loginRes.body.data.tokens.accessToken;
+
+    const res = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${accessToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.hasPassword).toBe(true);
+    expect(res.body.data.password).toBeUndefined(); // never the hash
+    expect(JSON.stringify(res.body)).not.toContain('$2b$'); // no bcrypt hash anywhere in the payload
+  });
+
+  it('returns hasPassword: false for an OTP-only user', async () => {
+    await createOtpOnlyUser(TEST_EMAIL);
+    const otp = '445566';
+    await plantOtp(TEST_EMAIL, 'login', otp);
+    const loginRes = await request(app)
+      .post('/api/auth/verify-otp')
+      .send({ email: TEST_EMAIL, code: otp, purpose: 'login' });
+    const accessToken = loginRes.body.data.tokens.accessToken;
+
+    const res = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${accessToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.hasPassword).toBe(false);
+  });
+
+  it('verify-otp login response for an existing password-holding user also reports hasPassword: true', async () => {
+    // Regression guard: the initial user fetch in verifyOtp() must select
+    // +password, otherwise this would incorrectly read false.
+    await createUserWithPassword(TEST_EMAIL, TEST_PASSWORD);
+    const otp = '556677';
+    await plantOtp(TEST_EMAIL, 'login', otp);
+
+    const res = await request(app)
+      .post('/api/auth/verify-otp')
+      .send({ email: TEST_EMAIL, code: otp, purpose: 'login' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.user.hasPassword).toBe(true);
+  });
+});
