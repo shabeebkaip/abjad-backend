@@ -44,15 +44,19 @@ export const verifyOtpSchema = z
     lastName: z.string().optional(),
     schoolName: z.string().optional(),
     contactName: z.string().optional(),
-    // Required only for purpose='signup' — see superRefine below (DECISIONS LOCKED #1).
+    // OPTIONAL for now — rollout decision 2026-09-20: DECISIONS LOCKED #1
+    // wants password REQUIRED at signup, but the current register form
+    // doesn't send one yet, so requiring it here would break prod signups.
+    // If provided, it's still validated + stored; if absent, the account is
+    // created OTP-only (same as any pre-existing OTP-only user) and can add
+    // a password later via /auth/set-password.
+    // TODO(M3): make signup password REQUIRED once the frontend register
+    // form collects+sends it (DECISIONS LOCKED #1 — deferred for safe rollout).
     password: z.string().optional(),
   })
   .superRefine((data, ctx) => {
     if (data.purpose !== 'signup') return;
-    if (!data.password) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['password'], message: 'Password is required to create an account' });
-      return;
-    }
+    if (!data.password) return; // optional for now — see TODO(M3) above
     const result = passwordSchema.safeParse(data.password);
     if (!result.success) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['password'], message: result.error.issues[0].message });
