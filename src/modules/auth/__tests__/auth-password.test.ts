@@ -91,9 +91,7 @@ describe('POST /api/auth/verify-otp — signup requires a password', () => {
     expect(loginRes.body.data.user.email).toBe(TEST_EMAIL);
   });
 
-  // Rollout decision 2026-09-20: password at signup is OPTIONAL for now (the
-  // current frontend doesn't send one yet) — TODO(M3) flips this to required.
-  it('signup without a password succeeds, creates an OTP-only user, who can then set-password and log in with it', async () => {
+  it('returns 400 when password is missing on signup (DECISIONS LOCKED #1 — required)', async () => {
     const otp = '222333';
     await plantOtp(TEST_EMAIL, 'signup', otp);
 
@@ -101,22 +99,8 @@ describe('POST /api/auth/verify-otp — signup requires a password', () => {
       .post('/api/auth/verify-otp')
       .send({ email: TEST_EMAIL, code: otp, purpose: 'signup', role: 'teacher' });
 
-    expect(res.status).toBe(200);
-    expect(res.body.success).toBe(true);
-
-    const user = await User.findOne({ email: TEST_EMAIL }).select('+password');
-    expect(user!.password).toBeFalsy();
-
-    // OTP-only user can set a password later, and it then works at /auth/login.
-    const accessToken = res.body.data.tokens.accessToken;
-    const setRes = await request(app)
-      .post('/api/auth/set-password')
-      .set('Authorization', `Bearer ${accessToken}`)
-      .send({ newPassword: TEST_PASSWORD });
-    expect(setRes.status).toBe(200);
-
-    const loginRes = await request(app).post('/api/auth/login').send({ email: TEST_EMAIL, password: TEST_PASSWORD });
-    expect(loginRes.status).toBe(200);
+    expect(res.status).toBe(400);
+    expect(res.body.success).toBe(false);
   });
 
   it('returns 400 when password is shorter than 8 characters', async () => {

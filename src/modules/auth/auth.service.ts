@@ -196,13 +196,10 @@ class AuthService {
       if (purpose !== 'signup') {
         throw AppError.notFound('No account found for this email. Please sign up first.');
       }
-      // Password at signup is OPTIONAL for now (rollout decision 2026-09-20)
-      // — the current frontend register form doesn't send one yet. Hash +
-      // store it when present; otherwise the user is created OTP-only
-      // (password stays nullable, same as any pre-existing OTP-only user —
-      // they can add one later via /auth/set-password).
-      // TODO(M3): make signup password REQUIRED once the frontend register
-      // form collects+sends it (DECISIONS LOCKED #1 — deferred for safe rollout).
+      // Password is required at signup (DECISIONS LOCKED #1); enforced by
+      // verifyOtpSchema's superRefine, so dto.password is always present here.
+      // OTP-only users only exist as pre-existing/legacy or admin-created
+      // accounts — never a product of the signup flow.
       const passwordHash = dto.password ? await hashPassword(dto.password) : undefined;
       // Create new user on signup — persist name fields from registration form
       user = await authRepository.createUser({
