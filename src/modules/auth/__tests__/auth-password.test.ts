@@ -139,6 +139,71 @@ describe('POST /api/auth/verify-otp — signup requires a password', () => {
 });
 
 // ════════════════════════════════════════════════════════════
+// SIGNUP-004 — signup rejects an already-registered email (409)
+// ════════════════════════════════════════════════════════════
+
+describe('SIGNUP-004 — signup for an already-registered email', () => {
+  it('POST /auth/send-otp (purpose=signup) returns 409 for an existing email and sends no OTP', async () => {
+    await createUserWithPassword(TEST_EMAIL, TEST_PASSWORD);
+
+    const res = await request(app)
+      .post('/api/auth/send-otp')
+      .send({ email: TEST_EMAIL, purpose: 'signup' });
+
+    expect(res.status).toBe(409);
+    expect(res.body.success).toBe(false);
+    expect(res.body.message).toMatch(/already exists/i);
+
+    const otpRecord = await OtpCode.findOne({ email: TEST_EMAIL, purpose: 'signup' });
+    expect(otpRecord).toBeNull(); // no OTP was ever generated/stored
+  });
+
+  it('also 409s for an existing OTP-only (no password) account', async () => {
+    await createOtpOnlyUser(TEST_EMAIL);
+
+    const res = await request(app)
+      .post('/api/auth/send-otp')
+      .send({ email: TEST_EMAIL, purpose: 'signup' });
+
+    expect(res.status).toBe(409);
+  });
+
+  it('POST /auth/verify-otp (purpose=signup) returns 409 for an existing email, defense in depth, and does not create a duplicate/alter the account', async () => {
+    const existing = await createUserWithPassword(TEST_EMAIL, TEST_PASSWORD, 'teacher');
+    // Simulate a direct verify-otp call that bypassed send-otp's guard (e.g.
+    // an OTP planted by an earlier, no-longer-possible request).
+    await plantOtp(TEST_EMAIL, 'signup', '123456');
+
+    const res = await request(app)
+      .post('/api/auth/verify-otp')
+      .send({ email: TEST_EMAIL, code: '123456', purpose: 'signup', role: 'school', password: 'Another-Pass9', schoolName: 'Sneaky School' });
+
+    expect(res.status).toBe(409);
+    expect(res.body.message).toMatch(/already exists/i);
+
+    // No duplicate account, and the existing one is completely unchanged —
+    // role/schoolName from the re-signup attempt must NOT have been applied.
+    const count = await User.countDocuments({ email: TEST_EMAIL });
+    expect(count).toBe(1);
+    const user = await User.findById(existing._id);
+    expect(user!.role).toBe('teacher');
+    expect(user!.schoolName).toBeUndefined();
+  });
+
+  it('signup for a brand-new email still succeeds (200) — the fix only blocks EXISTING emails', async () => {
+    const otp = '667788';
+    await plantOtp(TEST_EMAIL, 'signup', otp);
+
+    const res = await request(app)
+      .post('/api/auth/verify-otp')
+      .send({ email: TEST_EMAIL, code: otp, purpose: 'signup', role: 'teacher', password: TEST_PASSWORD });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.isNewUser).toBe(true);
+  });
+});
+
+// ════════════════════════════════════════════════════════════
 // 2. POST /api/auth/login
 // ════════════════════════════════════════════════════════════
 

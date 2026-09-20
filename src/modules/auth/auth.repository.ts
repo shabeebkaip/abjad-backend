@@ -80,23 +80,6 @@ class AuthRepository {
   }
 
   /**
-   * Update a user's role (e.g. when re-registering with a different role)
-   */
-  async updateUserRole(
-    email: string,
-    role: 'teacher' | 'school' | 'admin',
-    nameFields?: { firstName?: string; lastName?: string; schoolName?: string },
-  ) {
-    // +password so the caller's mapToAuthUserDTO (hasPassword) stays
-    // accurate for this branch too, same reasoning as findUserWithPassword.
-    return User.findOneAndUpdate(
-      { email: email.toLowerCase() },
-      { role, ...nameFields },
-      { new: true }
-    ).select('+password');
-  }
-
-  /**
    * Update lastLoginAt timestamp
    */
   async updateLastLogin(userId: string) {

@@ -135,6 +135,16 @@ class AuthService {
     const user = await authRepository.findUserByEmail(email);
     this.assertAccountNotLocked(user);
 
+    // SIGNUP-004 — signup for an already-registered email must be rejected
+    // BEFORE any OTP is generated/sent. Without this, a fresh signup code
+    // gets emailed to a registered inbox and verifyOtp silently logs the
+    // typed-in signup data into the pre-existing account instead. Reveals
+    // that the email is registered — acceptable per DECISIONS LOCKED #6
+    // (same posture as the login/reset 404 below).
+    if (purpose === 'signup' && user) {
+      throw AppError.conflict('An account with this email already exists. Please sign in instead.');
+    }
+
     // Only signup may create a new account. login / reset for an unknown email
     // must be rejected here — otherwise the OTP flow proceeds and verifyOtp
     // would silently create a blank, nameless account (LOGIN-002).
@@ -211,13 +221,13 @@ class AuthService {
         schoolName: dto.schoolName,
         passwordHash,
       });
-    } else if (purpose === 'signup' && dto.role && dto.role !== user.role) {
-      // User already exists but re-registering with a different role — update role + names
-      user = await authRepository.updateUserRole(email, dto.role, {
-        firstName: dto.firstName,
-        lastName: dto.lastName,
-        schoolName: dto.schoolName,
-      }) ?? user;
+    } else if (purpose === 'signup') {
+      // SIGNUP-004 defense in depth — sendOtp already rejects signup for an
+      // existing email before an OTP is ever sent, but a direct verify-otp
+      // API call could bypass that. Re-registering must NOT silently log
+      // the caller into the existing account or change its role/names —
+      // role changes are admin-driven, not a side effect of re-signup.
+      throw AppError.conflict('An account with this email already exists. Please sign in instead.');
     }
 
     // 6-8. Reset failed attempts, update lastLogin, sign tokens, persist session
