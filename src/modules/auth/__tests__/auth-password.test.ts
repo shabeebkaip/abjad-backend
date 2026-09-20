@@ -673,3 +673,72 @@ describe('GET /api/auth/me — hasPassword', () => {
     expect(res.body.data.user.hasPassword).toBe(true);
   });
 });
+
+// ════════════════════════════════════════════════════════════
+// 7. AUTH_THROTTLE_DISABLED — client rollout override
+// ════════════════════════════════════════════════════════════
+
+describe('AUTH_THROTTLE_DISABLED', () => {
+  afterEach(() => {
+    delete process.env.AUTH_THROTTLE_DISABLED; // never leak into other tests
+  });
+
+  it('many wrong OTP attempts never 429/lock, and the correct code still works', async () => {
+    process.env.AUTH_THROTTLE_DISABLED = 'true';
+    await createOtpOnlyUser(TEST_EMAIL);
+    const otp = '101010';
+    await plantOtp(TEST_EMAIL, 'login', otp);
+
+    // Far more than config.otp.maxAttempts (3) wrong codes.
+    for (let i = 0; i < 6; i++) {
+      const res = await request(app).post('/api/auth/verify-otp').send({ email: TEST_EMAIL, code: '000000', purpose: 'login' });
+      expect(res.status).toBe(401); // still the normal "Invalid OTP" failure, never 429
+    }
+
+    const user = await User.findOne({ email: TEST_EMAIL });
+    expect(user!.lockedUntil).toBeFalsy();
+
+    const res = await request(app).post('/api/auth/verify-otp').send({ email: TEST_EMAIL, code: otp, purpose: 'login' });
+    expect(res.status).toBe(200); // correct code still works
+  });
+
+  it('many wrong password attempts never lock the account', async () => {
+    process.env.AUTH_THROTTLE_DISABLED = 'true';
+    await createUserWithPassword(TEST_EMAIL, TEST_PASSWORD);
+
+    // Far more than the 5-strike password threshold.
+    for (let i = 0; i < 8; i++) {
+      const res = await request(app).post('/api/auth/login').send({ email: TEST_EMAIL, password: 'wrong' });
+      expect(res.status).toBe(401); // still generic invalid-credentials, never 429
+    }
+
+    const user = await User.findOne({ email: TEST_EMAIL });
+    expect(user!.lockedUntil).toBeFalsy();
+    expect(user!.failedLoginAttempts).toBe(0);
+
+    const res = await request(app).post('/api/auth/login').send({ email: TEST_EMAIL, password: TEST_PASSWORD });
+    expect(res.status).toBe(200); // correct password still works
+  });
+
+  it('a previously-locked user is NOT blocked while the flag is on', async () => {
+    await createUserWithPassword(TEST_EMAIL, TEST_PASSWORD);
+    // Simulate an existing lock from before the flag was flipped on.
+    await User.updateOne({ email: TEST_EMAIL }, { lockedUntil: new Date(Date.now() + 15 * 60 * 1000) });
+
+    process.env.AUTH_THROTTLE_DISABLED = 'true';
+    const res = await request(app).post('/api/auth/login').send({ email: TEST_EMAIL, password: TEST_PASSWORD });
+    expect(res.status).toBe(200); // assertAccountNotLocked no-ops — not 429
+  });
+
+  it('default (flag unset) behavior is unchanged — 5 failed password attempts still lock the account', async () => {
+    expect(process.env.AUTH_THROTTLE_DISABLED).toBeUndefined();
+    await createUserWithPassword(TEST_EMAIL, TEST_PASSWORD);
+
+    for (let i = 0; i < 5; i++) {
+      await request(app).post('/api/auth/login').send({ email: TEST_EMAIL, password: 'wrong' });
+    }
+
+    const res = await request(app).post('/api/auth/login').send({ email: TEST_EMAIL, password: TEST_PASSWORD });
+    expect(res.status).toBe(429); // still locks when the flag is absent
+  });
+});

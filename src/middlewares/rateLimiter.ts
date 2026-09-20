@@ -24,6 +24,23 @@ const emailKey = (req: Request): string => {
   return req.ip ? ipKeyGenerator(req.ip) : 'unknown';
 };
 
+// Client rollout override — testers on the prod-mode EC2 box kept getting
+// locked out (e.g. strictLimiter's 3/hour/IP on their FIRST real reset-
+// password attempt). Independent of NODE_ENV on purpose — they're testing
+// WITH NODE_ENV=production, so gating this behind dev/test checks wouldn't
+// reach them. Reversible: unset the env var and every limiter is back to
+// normal with no code change. Also short-circuits the auth.service account
+// lockout (see assertAccountNotLocked / verifyAndConsumeOtp / incrementFailedLogins).
+// TODO(launch blocker): unset AUTH_THROTTLE_DISABLED before real production.
+export const isAuthThrottleDisabled = (): boolean => process.env.AUTH_THROTTLE_DISABLED === 'true';
+
+if (isAuthThrottleDisabled()) {
+  // Loud on purpose, printed on every boot for as long as the flag is set.
+  console.warn(
+    '⚠️  AUTH_THROTTLE_DISABLED=true — all auth rate limits AND account lockouts are OFF. NEVER run this in real production. Unset before launch.',
+  );
+}
+
 /**
  * OTP limiter: 5 requests per 10 minutes PER EMAIL
  * Applied to: POST /auth/send-otp
@@ -36,7 +53,7 @@ export const otpLimiter = rateLimit({
   message: { success: false, message: 'Too many OTP requests' },
   standardHeaders: true,
   legacyHeaders: false,
-  skip: (_req) => process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test',
+  skip: (_req) => isAuthThrottleDisabled() || process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test',
 });
 
 /**
@@ -53,7 +70,7 @@ export const verifyOtpLimiter = rateLimit({
   message: { success: false, message: 'Too many verification attempts' },
   standardHeaders: true,
   legacyHeaders: false,
-  skip: (_req) => process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test',
+  skip: (_req) => isAuthThrottleDisabled() || process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test',
 });
 
 /**
@@ -68,7 +85,7 @@ export const refreshLimiter = rateLimit({
   message: { success: false, message: 'Too many refresh requests' },
   standardHeaders: true,
   legacyHeaders: false,
-  skip: (_req) => process.env.NODE_ENV === 'test',
+  skip: (_req) => isAuthThrottleDisabled() || process.env.NODE_ENV === 'test',
 });
 
 /**
@@ -87,7 +104,7 @@ export const loginLimiter = rateLimit({
   message: { success: false, message: 'Too many login attempts' },
   standardHeaders: true,
   legacyHeaders: false,
-  skip: (_req) => process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test',
+  skip: (_req) => isAuthThrottleDisabled() || process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test',
 });
 
 /**
@@ -100,5 +117,5 @@ export const strictLimiter = rateLimit({
   message: { success: false, message: 'Too many attempts. Try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
-  skip: (_req) => process.env.NODE_ENV === 'test',
+  skip: (_req) => isAuthThrottleDisabled() || process.env.NODE_ENV === 'test',
 });

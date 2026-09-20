@@ -11,6 +11,7 @@ import { sendOtpEmail } from '../../utils/otp-sender.util';
 import { signAccessToken, signRefreshToken, verifyRefreshToken, hashToken, JwtPayload } from '../../utils/jwt.util';
 import { hashPassword, comparePassword, DUMMY_PASSWORD_HASH } from '../../utils/password.util';
 import { AppError } from '../../utils/app-error.util';
+import { isAuthThrottleDisabled } from '../../middlewares/rateLimiter';
 import type { UserDocument } from '../../models/user.model';
 
 class AuthService {
@@ -21,8 +22,13 @@ class AuthService {
    * password login, and password-reset — one lock, checked the same way
    * everywhere, so neither OTP nor password brute-force can bypass a lock
    * set by the other (DECISIONS LOCKED risk #2).
+   *
+   * Client rollout override: no-ops entirely when AUTH_THROTTLE_DISABLED is
+   * set (testers were getting locked out on real prod-mode deployments) —
+   * see middlewares/rateLimiter.ts for the flag + the startup warning.
    */
   private assertAccountNotLocked(user: { lockedUntil?: Date } | null): void {
+    if (isAuthThrottleDisabled()) return;
     if (user?.lockedUntil && user.lockedUntil > new Date()) {
       const lockExpiresIn = Math.ceil((user.lockedUntil.getTime() - Date.now()) / 60000);
       throw AppError.tooManyRequests(`Account temporarily locked due to too many failed attempts. Please try again in ${lockExpiresIn} minutes.`);
@@ -33,14 +39,19 @@ class AuthService {
    * Verify an OTP code for email+purpose and consume it (delete on success).
    * Shared by verifyOtp (signup/login/reset-via-verify) and resetPassword —
    * same max-attempts lockout + increment behavior either way.
+   *
+   * Client rollout override: when AUTH_THROTTLE_DISABLED is set, wrong codes
+   * still fail with the normal "Invalid OTP" message, but the attempt is
+   * never counted toward the 3-strike lock and the lock is never applied.
    */
   private async verifyAndConsumeOtp(email: string, purpose: 'signup' | 'login' | 'reset', code: string): Promise<void> {
+    const throttleDisabled = isAuthThrottleDisabled();
     const otpRecord = await authRepository.findOtp(email, purpose);
     if (!otpRecord) {
       throw AppError.notFound(`No OTP found for ${email}. Please request a new OTP.`);
     }
 
-    if (otpRecord.attempts >= config.otp.maxAttempts) {
+    if (!throttleDisabled && otpRecord.attempts >= config.otp.maxAttempts) {
       const lockUntil = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
       await authRepository.lockAccount(email, lockUntil);
       throw AppError.tooManyRequests(`Too many failed OTP verification attempts (${otpRecord.attempts}/${config.otp.maxAttempts}). Account locked for 15 minutes. Please try again later.`);
@@ -48,7 +59,9 @@ class AuthService {
 
     const valid = await verifyOtpHash(code, otpRecord.code);
     if (!valid) {
-      await authRepository.incrementOtpAttempts(otpRecord._id!.toString());
+      if (!throttleDisabled) {
+        await authRepository.incrementOtpAttempts(otpRecord._id!.toString());
+      }
       const remainingAttempts = config.otp.maxAttempts - (otpRecord.attempts + 1);
       throw AppError.unauthorized(`Invalid OTP code. You have ${remainingAttempts} attempt(s) remaining.`);
     }
@@ -265,7 +278,11 @@ class AuthService {
 
     const match = await comparePassword(password, user.password);
     if (!match) {
-      await authRepository.incrementFailedLogins(email);
+      // Client rollout override: wrong password still fails normally, just
+      // never counted toward the 5-strike lock — see isAuthThrottleDisabled.
+      if (!isAuthThrottleDisabled()) {
+        await authRepository.incrementFailedLogins(email);
+      }
       throw invalidCredentials();
     }
 
