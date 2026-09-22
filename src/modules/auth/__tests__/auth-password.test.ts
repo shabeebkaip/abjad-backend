@@ -366,6 +366,23 @@ describe('POST /api/auth/login', () => {
     expect(res.status).toBe(400);
   });
 
+  // PWD-010 — a whitespace-padded email (leading, trailing, or both) must
+  // still authenticate — matching the clean-email control case.
+  it.each([
+    ['leading space', ` ${TEST_EMAIL}`],
+    ['trailing space', `${TEST_EMAIL} `],
+    ['both', ` ${TEST_EMAIL} `],
+  ])('PWD-010: logs in successfully with %s around the email', async (_label, padded) => {
+    await createUserWithPassword(TEST_EMAIL, TEST_PASSWORD);
+
+    const res = await request(app)
+      .post('/api/auth/login')
+      .send({ email: padded, password: TEST_PASSWORD });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.user.email).toBe(TEST_EMAIL);
+  });
+
   it('a successful login resets the failed-attempt counter', async () => {
     await createUserWithPassword(TEST_EMAIL, TEST_PASSWORD);
     await request(app).post('/api/auth/login').send({ email: TEST_EMAIL, password: 'wrong' });

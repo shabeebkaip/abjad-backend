@@ -155,6 +155,23 @@ describe('POST /api/auth/send-otp', () => {
     const record = await OtpCode.findOne({ email: 'teacher@test.com', purpose: 'signup' });
     expect(record).not.toBeNull();
   });
+
+  // PWD-010 — leading/trailing whitespace (copy-pasted from an invite email or
+  // spreadsheet) must be trimmed before .email() validation, not rejected.
+  it.each([
+    ['leading space', ` ${TEST_EMAIL_TEACHER}`],
+    ['trailing space', `${TEST_EMAIL_TEACHER} `],
+    ['both', ` ${TEST_EMAIL_TEACHER} `],
+  ])('PWD-010: trims %s and succeeds (200), matching the clean-email control', async (_label, padded) => {
+    const res = await request(app)
+      .post('/api/auth/send-otp')
+      .send({ email: padded, purpose: 'signup' });
+
+    expect(res.status).toBe(200);
+
+    const record = await OtpCode.findOne({ email: TEST_EMAIL_TEACHER, purpose: 'signup' });
+    expect(record).not.toBeNull(); // stored under the trimmed email, not the padded one
+  });
 });
 
 // ════════════════════════════════════════════════════════════
