@@ -126,6 +126,15 @@ class AuthRepository {
     );
   }
 
+  /**
+   * Update the account-level UI language preference ('ar' | 'en').
+   * Panel i18n M1 task 2 — follows the user across devices instead of
+   * living only in frontend localStorage.
+   */
+  async updateLanguage(userId: string, language: 'ar' | 'en') {
+    return User.findByIdAndUpdate(userId, { language }, { new: true });
+  }
+
   // ────────────────────────────────────────────────────────
   // OTP CODE QUERIES
   // ────────────────────────────────────────────────────────

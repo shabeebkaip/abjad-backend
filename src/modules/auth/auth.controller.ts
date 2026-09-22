@@ -97,6 +97,26 @@ class AuthController {
     }
   }
 
+  /**
+   * PATCH /auth/language — authenticated. Persists the account-level UI
+   * language preference so it follows the user across devices (Panel i18n
+   * M1 task 2). Frontend continues to also mirror this into its local
+   * provider/localStorage for instant paint.
+   */
+  async updateLanguage(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = (req as any).user?.userId;
+      const language = await authService.updateLanguage(userId, req.body.language);
+      res.status(200).json({
+        success: true,
+        message: 'Language preference updated successfully',
+        data: { language },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async sendOtp(req: Request, res: Response, next: NextFunction) {
     try {
       const data: SendOtpDTO = req.body;

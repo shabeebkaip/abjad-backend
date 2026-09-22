@@ -791,3 +791,74 @@ describe('AUTH_THROTTLE_DISABLED', () => {
     expect(res.status).toBe(429); // still locks when the flag is absent
   });
 });
+
+// ════════════════════════════════════════════════════════════
+// 5. Language preference — Panel i18n M1 task 2
+// ════════════════════════════════════════════════════════════
+
+describe('Account language preference', () => {
+  it('defaults to "ar" for a new user', async () => {
+    const user = await createUserWithPassword(TEST_EMAIL, TEST_PASSWORD);
+    expect(user.language).toBe('ar');
+  });
+
+  it('is returned on /api/auth/login', async () => {
+    await createUserWithPassword(TEST_EMAIL, TEST_PASSWORD);
+    const res = await request(app).post('/api/auth/login').send({ email: TEST_EMAIL, password: TEST_PASSWORD });
+    expect(res.status).toBe(200);
+    expect(res.body.data.user.language).toBe('ar');
+  });
+
+  it('is returned on /api/auth/me', async () => {
+    await createUserWithPassword(TEST_EMAIL, TEST_PASSWORD);
+    const loginRes = await request(app).post('/api/auth/login').send({ email: TEST_EMAIL, password: TEST_PASSWORD });
+    const accessToken = loginRes.body.data.tokens.accessToken;
+
+    const res = await request(app)
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${accessToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.data.language).toBe('ar');
+  });
+
+  describe('PATCH /api/auth/language', () => {
+    it('updates the preference and persists it', async () => {
+      await createUserWithPassword(TEST_EMAIL, TEST_PASSWORD);
+      const loginRes = await request(app).post('/api/auth/login').send({ email: TEST_EMAIL, password: TEST_PASSWORD });
+      const accessToken = loginRes.body.data.tokens.accessToken;
+
+      const res = await request(app)
+        .patch('/api/auth/language')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ language: 'en' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.language).toBe('en');
+
+      const user = await User.findOne({ email: TEST_EMAIL });
+      expect(user!.language).toBe('en');
+
+      // Follows the user on next login too — the whole point of server-storing it.
+      const reloginRes = await request(app).post('/api/auth/login').send({ email: TEST_EMAIL, password: TEST_PASSWORD });
+      expect(reloginRes.body.data.user.language).toBe('en');
+    });
+
+    it('returns 400 for an invalid language value', async () => {
+      await createUserWithPassword(TEST_EMAIL, TEST_PASSWORD);
+      const loginRes = await request(app).post('/api/auth/login').send({ email: TEST_EMAIL, password: TEST_PASSWORD });
+      const accessToken = loginRes.body.data.tokens.accessToken;
+
+      const res = await request(app)
+        .patch('/api/auth/language')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ language: 'fr' });
+
+      expect(res.status).toBe(400);
+    });
+
+    it('returns 401 without auth', async () => {
+      const res = await request(app).patch('/api/auth/language').send({ language: 'en' });
+      expect(res.status).toBe(401);
+    });
+  });
+});

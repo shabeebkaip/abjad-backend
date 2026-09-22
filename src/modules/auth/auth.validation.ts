@@ -85,6 +85,10 @@ export const changePasswordSchema = z.object({
   newPassword: passwordSchema,
 });
 
+export const updateLanguageSchema = z.object({
+  language: z.enum(['ar', 'en']),
+});
+
 export const resetPasswordSchema = z.object({
   email: emailSchema,
   code: z.string().length(6, 'OTP must be 6 digits').regex(/^\d+$/, 'OTP must contain only digits'),
@@ -99,3 +103,4 @@ export const validateLogin = validate(loginSchema);
 export const validateSetPassword = validate(setPasswordSchema);
 export const validateChangePassword = validate(changePasswordSchema);
 export const validateResetPassword = validate(resetPasswordSchema);
+export const validateUpdateLanguage = validate(updateLanguageSchema);

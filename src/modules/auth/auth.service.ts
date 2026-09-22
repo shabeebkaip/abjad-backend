@@ -377,6 +377,16 @@ class AuthService {
   }
 
   /**
+   * Update the account-level UI language preference. Panel i18n M1 task 2 —
+   * persists so the choice follows the user across devices/sessions.
+   */
+  async updateLanguage(userId: string, language: 'ar' | 'en'): Promise<string> {
+    const user = await authRepository.updateLanguage(userId, language);
+    if (!user) throw AppError.notFound('User not found');
+    return user.language;
+  }
+
+  /**
    * Map user document to AuthUserDTO
    */
   private mapToAuthUserDTO(user: any) {

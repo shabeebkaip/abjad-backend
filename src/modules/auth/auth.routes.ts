@@ -10,6 +10,7 @@ import {
   validateSetPassword,
   validateChangePassword,
   validateResetPassword,
+  validateUpdateLanguage,
 } from './auth.validation';
 import { authenticate } from '../../middlewares/auth';
 import { otpLimiter, verifyOtpLimiter, refreshLimiter, loginLimiter, strictLimiter } from '../../middlewares/rateLimiter';
@@ -45,6 +46,9 @@ router.post('/logout-all', authenticate, authController.logoutAll);
 
 // GET /auth/me
 router.get('/me', authenticate, authController.me);
+
+// PATCH /auth/language — Panel i18n M1 task 2: server-stored language preference
+router.patch('/language', authenticate, validateUpdateLanguage, authController.updateLanguage);
 
 // GET /auth/sessions
 router.get('/sessions', authenticate, authController.sessions);
