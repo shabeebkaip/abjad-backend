@@ -166,6 +166,54 @@ const GROUP_LABELS_AR: Record<string, string> = {
   usage:      'الاستخدام',
 };
 
+// Public, marketing-safe comparison-row copy per entitlement key. The
+// entitlement registry's own `name`/`description` are INTERNAL admin text
+// (English-only, with build notes like "Tier 3 #21" / "WDRS-powered") and
+// must never reach the public pricing page — these are what we show instead.
+interface PublicFeatureCopy { labelEn: string; labelAr: string; descEn?: string; descAr?: string }
+const PUBLIC_FEATURE_COPY: Record<string, PublicFeatureCopy> = {
+  maxActiveJobs: {
+    labelEn: 'Active job posts', labelAr: 'الوظائف المنشورة النشطة',
+    descEn: 'How many jobs you can keep open at the same time.',
+    descAr: 'عدد الوظائف التي يمكنك إبقاؤها مفتوحة في الوقت نفسه.',
+  },
+  maxCvViewsPerMonth: {
+    labelEn: 'Candidate profile views', labelAr: 'مشاهدات ملفات المرشحين',
+    descEn: 'Full candidate profiles you can view each month.',
+    descAr: 'عدد ملفات المرشحين الكاملة التي يمكنك عرضها شهرياً.',
+  },
+  teamSeats: {
+    labelEn: 'Team members', labelAr: 'أعضاء الفريق',
+    descEn: 'Colleagues you can invite to your account.',
+    descAr: 'عدد الزملاء الذين يمكنك دعوتهم إلى حسابك.',
+  },
+  trialDays: {
+    labelEn: 'Free trial length', labelAr: 'مدة التجربة المجانية',
+    descEn: 'Trial period when you first subscribe.',
+    descAr: 'فترة التجربة عند اشتراكك لأول مرة.',
+  },
+  bulkCandidateExport: {
+    labelEn: 'Bulk candidate export', labelAr: 'تصدير المرشحين بالجملة',
+    descEn: 'Select multiple candidates and export them to PDF.',
+    descAr: 'حدّد عدة مرشحين وصدّرهم إلى ملف PDF.',
+  },
+  prioritySupport: {
+    labelEn: 'Priority support', labelAr: 'دعم ذو أولوية',
+    descEn: 'Faster response on your support requests.',
+    descAr: 'استجابة أسرع لطلبات الدعم الخاصة بك.',
+  },
+  analyticsAccess: {
+    labelEn: 'Hiring analytics', labelAr: 'تحليلات التوظيف',
+    descEn: 'Insights and reports on your hiring activity.',
+    descAr: 'رؤى وتقارير حول نشاط التوظيف لديك.',
+  },
+  bestMatchSort: {
+    labelEn: 'Best Match sort', labelAr: 'ترتيب أفضل تطابق',
+    descEn: 'Rank candidates by smart match on the search page.',
+    descAr: 'ترتيب المرشحين حسب التطابق الذكي في صفحة البحث.',
+  },
+};
+
 // ── Plan transform ───────────────────────────────────────────────────────
 
 function planFromDoc(
@@ -270,10 +318,12 @@ class PricingPageService {
     for (const entry of ENTITLEMENTS_BY_AUDIENCE['school']) {
       const groupKey = GROUP_FOR_KEY[entry.key] ?? 'support';
       const trialVal = trialValueFor(entry);
+      const copy = PUBLIC_FEATURE_COPY[entry.key];
       const row: PricingPageComparisonRow = {
         key: entry.key,
-        label: entry.name,
-        description: entry.description,
+        // Public marketing copy — never the registry's internal name/description.
+        label: copy ? (locale === 'ar' ? copy.labelAr : copy.labelEn) : entry.key,
+        description: copy ? (locale === 'ar' ? copy.descAr : copy.descEn) : undefined,
         values: [
           describeEntitlement(entry, trialVal, locale),
           describeEntitlement(entry, paidValues[entry.key], locale),
