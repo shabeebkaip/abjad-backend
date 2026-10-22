@@ -45,14 +45,24 @@ export const config = {
     url: process.env.REDIS_URL || 'redis://localhost:6379',
   },
   
-  // TODO: [BEFORE PRODUCTION] Restrict CORS to specific origins using CLIENT_URL env var.
-  // Replace `origin: true` with:
-  //   origin: process.env.CLIENT_URL
-  //     ? process.env.CLIENT_URL.split(',').map((o) => o.trim())
-  //     : ['http://localhost:3000'],
-  // And set CLIENT_URL=https://abjad-frontend.vercel.app in Vercel backend env vars.
+  // CORS allowlist (SEC-001). Never reflect arbitrary origins: with
+  // credentials:true that lets any site call /auth/refresh and read the
+  // access token. Prod origins are hardcoded and CLIENT_URL is ignored in
+  // production, so a stale value on the server (e.g. an old *.vercel.app host
+  // someone else could claim) can never be trusted with credentials.
+  // Outside production, localhost + CLIENT_URL (comma-separated) are added.
   cors: {
-    origin: true,
+    origin: [
+      'https://hiring.abjadteach.com',
+      'https://hiring-admin.abjadteach.com',
+      ...(process.env.NODE_ENV === 'production'
+        ? []
+        : [
+            'http://localhost:3000',
+            'http://localhost:3001',
+            ...(process.env.CLIENT_URL ? process.env.CLIENT_URL.split(',').map((o) => o.trim()).filter(Boolean) : []),
+          ]),
+    ],
   },
   
   // File Upload
