@@ -13,7 +13,7 @@ import {
   validateUpdateLanguage,
 } from './auth.validation';
 import { authenticate } from '../../middlewares/auth';
-import { otpLimiter, verifyOtpLimiter, refreshLimiter, loginLimiter, strictLimiter } from '../../middlewares/rateLimiter';
+import { otpLimiter, verifyOtpLimiter, refreshLimiter, loginLimiter, setPasswordLimiter, changePasswordLimiter, resetPasswordLimiter, passwordIpLimiter } from '../../middlewares/rateLimiter';
 
 const router: Router = Router();
 
@@ -27,13 +27,13 @@ router.post('/verify-otp', verifyOtpLimiter, validateVerifyOtp, authController.v
 router.post('/login', loginLimiter, validateLogin, authController.login);
 
 // POST /auth/set-password — authenticated, only if no password set yet
-router.post('/set-password', authenticate, strictLimiter, validateSetPassword, authController.setPassword);
+router.post('/set-password', authenticate, validateSetPassword, passwordIpLimiter, setPasswordLimiter, authController.setPassword);
 
 // POST /auth/change-password — authenticated, requires currentPassword
-router.post('/change-password', authenticate, strictLimiter, validateChangePassword, authController.changePassword);
+router.post('/change-password', authenticate, validateChangePassword, passwordIpLimiter, changePasswordLimiter, authController.changePassword);
 
 // POST /auth/reset-password — forgot-password: valid reset OTP + new password
-router.post('/reset-password', strictLimiter, validateResetPassword, authController.resetPassword);
+router.post('/reset-password', validateResetPassword, passwordIpLimiter, resetPasswordLimiter, authController.resetPassword);
 
 // POST /auth/refresh
 router.post('/refresh', refreshLimiter, authController.refresh);

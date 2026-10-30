@@ -9,6 +9,7 @@ import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import type { Request } from 'express';
 import crypto from 'crypto';
 import { config } from '../config';
+import type { AuthRequest } from './auth';
 
 // Key OTP limiters by EMAIL, not IP. Schools/offices sit behind a single
 // shared IP (NAT), so IP-keying lets one busy network exhaust the budget and
@@ -123,12 +124,45 @@ export const loginLimiter = rateLimit({
 });
 
 /**
- * Strict limiter for sensitive operations.
- * Applied to: password reset, set-password, change-password.
+ * Password-operation limiters (set / change / reset): 3 per hour PER ACCOUNT.
+ * They sit AFTER validation in auth.routes so malformed requests don't spend
+ * a slot. Business failures (wrong current password, wrong reset code) do
+ * count — that is the brute-force cap we want.
+ *
+ * One instance (= one bucket) per endpoint, deliberately: a user who fat-
+ * fingers their current password 3 times on change-password must still be
+ * able to use the forgot-password recovery path.
+ *
+ * Keys: set/change -> authenticated user id (limiter runs after authenticate);
+ * reset -> normalized email (no session yet). Both fall back to the IP key.
+ * Per-account keying alone would let one IP spray many accounts, so
+ * passwordIpLimiter adds a loose 30/hour per-IP backstop (shared across the
+ * three endpoints; generous enough for a school NAT).
  */
-export const strictLimiter = rateLimit({
+const userKey = (req: Request): string => {
+  const id = (req as AuthRequest).user?.userId;
+  return id ? `u:${id}` : req.ip ? ipKeyGenerator(req.ip) : 'unknown';
+};
+
+const passwordAccountLimiter = (keyGenerator: (req: Request) => string) =>
+  rateLimit({
+    windowMs: 60 * 60 * 1000, // 1 hour
+    max: 3,
+    keyGenerator,
+    message: { success: false, message: 'Too many attempts. Try again later.' },
+    standardHeaders: true,
+    legacyHeaders: false,
+    skip: (_req) => isAuthThrottleDisabled() || process.env.NODE_ENV === 'test',
+  });
+
+export const setPasswordLimiter = passwordAccountLimiter(userKey);
+export const changePasswordLimiter = passwordAccountLimiter(userKey);
+export const resetPasswordLimiter = passwordAccountLimiter(emailKey);
+
+export const passwordIpLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
-  max: 3,
+  max: 30,
+  keyGenerator: (req) => (req.ip ? ipKeyGenerator(req.ip) : 'unknown'),
   message: { success: false, message: 'Too many attempts. Try again later.' },
   standardHeaders: true,
   legacyHeaders: false,

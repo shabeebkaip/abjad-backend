@@ -1,5 +1,5 @@
 /**
- * Limiter keying tests (B1). The real limiters skip themselves when
+ * Limiter keying tests (B1, B2). The real limiters skip themselves when
  * NODE_ENV=test, so flip to 'production' for the duration of this file and
  * mount them on a throwaway app. `trust proxy` is enabled on that app only so
  * each test can pick its own client IP via X-Forwarded-For.
@@ -7,16 +7,30 @@
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import request from 'supertest';
-import { refreshLimiter } from '../rateLimiter';
+import {
+  refreshLimiter,
+  setPasswordLimiter,
+  changePasswordLimiter,
+  resetPasswordLimiter,
+  passwordIpLimiter,
+} from '../rateLimiter';
 
 const COOKIE = 'abjad_session'; // config.cookie.refreshTokenName outside production
 const ok = (_req: express.Request, res: express.Response) => { res.json({ ok: true }); };
+const fakeAuth: express.RequestHandler = (req, _res, next) => {
+  const id = req.header('x-user');
+  if (id) (req as any).user = { userId: id };
+  next();
+};
 
 const app = express();
 app.set('trust proxy', true);
 app.use(express.json());
 app.use(cookieParser());
 app.post('/refresh', refreshLimiter, ok);
+app.post('/set', fakeAuth, passwordIpLimiter, setPasswordLimiter, ok);
+app.post('/change', fakeAuth, passwordIpLimiter, changePasswordLimiter, ok);
+app.post('/reset', passwordIpLimiter, resetPasswordLimiter, ok);
 
 const prevEnv = process.env.NODE_ENV;
 beforeAll(() => { process.env.NODE_ENV = 'production'; });
@@ -50,3 +64,46 @@ describe('refreshLimiter (B1)', () => {
   });
 });
 
+describe('password limiters (B2)', () => {
+  it('set/change: 3 per hour per user id, independent across users on the same IP', async () => {
+    const ip = '10.2.0.1';
+    for (let i = 0; i < 3; i++) {
+      expect((await request(app).post('/change').set('X-Forwarded-For', ip).set('x-user', 'alice')).status).toBe(200);
+    }
+    expect((await request(app).post('/change').set('X-Forwarded-For', ip).set('x-user', 'alice')).status).toBe(429);
+    expect((await request(app).post('/change').set('X-Forwarded-For', ip).set('x-user', 'bob')).status).toBe(200);
+  });
+
+  it('set and change are separate buckets for the same user', async () => {
+    const ip = '10.2.0.2';
+    for (let i = 0; i < 3; i++) await request(app).post('/change').set('X-Forwarded-For', ip).set('x-user', 'carol');
+    expect((await request(app).post('/change').set('X-Forwarded-For', ip).set('x-user', 'carol')).status).toBe(429);
+    expect((await request(app).post('/set').set('X-Forwarded-For', ip).set('x-user', 'carol')).status).toBe(200);
+  });
+
+  it('reset: 3 per hour per normalized email; case/whitespace variants share a bucket; other emails unaffected', async () => {
+    const ip = '10.2.0.3';
+    const send = (email: string) => request(app).post('/reset').set('X-Forwarded-For', ip).send({ email });
+    expect((await send('dave@test.com')).status).toBe(200);
+    expect((await send('DAVE@test.com')).status).toBe(200);
+    expect((await send(' dave@test.com ')).status).toBe(200);
+    expect((await send('dave@test.com')).status).toBe(429);
+    expect((await send('erin@test.com')).status).toBe(200);
+  });
+
+  it('a reset is not blocked by exhausted change-password attempts (recovery path stays open)', async () => {
+    const ip = '10.2.0.4';
+    for (let i = 0; i < 4; i++) await request(app).post('/change').set('X-Forwarded-For', ip).set('x-user', 'frank');
+    expect((await request(app).post('/reset').set('X-Forwarded-For', ip).send({ email: 'frank@test.com' })).status).toBe(200);
+  });
+
+  it('per-IP backstop: 30/hour across many accounts, then 429 for a brand-new account', async () => {
+    const ip = '10.2.0.5';
+    for (let i = 0; i < 30; i++) {
+      const r = await request(app).post('/reset').set('X-Forwarded-For', ip).send({ email: `spray${i}@test.com` });
+      expect(r.status).toBe(200);
+    }
+    const r = await request(app).post('/reset').set('X-Forwarded-For', ip).send({ email: 'spray-new@test.com' });
+    expect(r.status).toBe(429);
+  });
+});
