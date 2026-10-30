@@ -164,6 +164,14 @@ class AuthRepository {
   }
 
   /**
+   * Set the account-level status ('active' | 'suspended' | ...). issueSession
+   * and /refresh refuse suspended/blocked users, so this gates every login door.
+   */
+  async setUserStatus(userId: string, status: 'active' | 'suspended' | 'blocked' | 'pending') {
+    return User.findByIdAndUpdate(userId, { status }, { new: true });
+  }
+
+  /**
    * Update the account-level UI language preference ('ar' | 'en').
    * Panel i18n M1 task 2 — follows the user across devices instead of
    * living only in frontend localStorage.

@@ -14,6 +14,7 @@ import SchoolTeamMember from '../../../models/school-team.model';
 import authRepository from '../auth.repository';
 import { hashPassword } from '../../../utils/password.util';
 import { hashOtp, otpExpiry } from '../../../utils/otp.util';
+import { suspensionService } from '../../suspension/suspension.service';
 import { adminService } from '../../admin/admin.service';
 
 const COOKIE = 'abjad_session';
@@ -144,5 +145,43 @@ describe('OTP attempt counting (B3 hardening)', () => {
     } finally {
       delete process.env.AUTH_THROTTLE_DISABLED;
     }
+  });
+});
+
+describe('suspension blocks login (User.status)', () => {
+  async function suspended() {
+    const user = await seed();
+    const profile = await new TeacherProfile({ userId: user._id, profileStatus: 'approved' }).save({ validateBeforeSave: false });
+    const a = await login();
+    await suspensionService.suspend({ targetType: 'TeacherProfile', targetId: profile._id.toString(), reasonCode: 'policy_violation' });
+    return { user, profile, a };
+  }
+
+  it('suspended user cannot log in by password, by OTP, or refresh; token dead', async () => {
+    const { user, a } = await suspended();
+    expect((await User.findById(user._id))!.status).toBe('suspended');
+    expect((await request(app).post('/api/auth/login').send({ email: EMAIL, password: PASSWORD })).status).toBe(403);
+    await plantOtp(EMAIL, 'login', '123456');
+    expect((await request(app).post('/api/auth/verify-otp').send({ email: EMAIL, code: '123456', purpose: 'login' })).status).toBe(403);
+    expect((await request(app).post('/api/auth/refresh').set('Cookie', a.cookie)).status).toBe(401);
+    expect((await me(a.accessToken)).status).toBe(401);
+  });
+
+  it('a reinstated user can log in again', async () => {
+    const { profile, user } = await suspended();
+    await suspensionService.reinstate({ targetType: 'TeacherProfile', targetId: profile._id.toString(), reasonCode: 'user_request' });
+    expect((await User.findById(user._id))!.status).toBe('active');
+    expect((await request(app).post('/api/auth/login').send({ email: EMAIL, password: PASSWORD })).status).toBe(200);
+  });
+
+  it('suspending a school ends its team members\' sessions too', async () => {
+    const owner = await seed('owner@test.com', 'school');
+    const member = await seed('member@test.com', 'teacher');
+    const profile = await new SchoolProfile({ userId: owner._id, profileStatus: 'approved' }).save({ validateBeforeSave: false });
+    await SchoolTeamMember.create({ schoolId: owner._id, userId: member._id, email: 'member@test.com', name: 'M', role: 'recruiter', invitedBy: owner._id, status: 'active' });
+    const m = await login('member@test.com');
+    expect((await me(m.accessToken)).status).toBe(200);
+    await suspensionService.suspend({ targetType: 'SchoolProfile', targetId: profile._id.toString(), reasonCode: 'policy_violation' });
+    expect((await me(m.accessToken)).status).toBe(401);
   });
 });

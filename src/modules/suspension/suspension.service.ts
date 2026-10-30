@@ -12,6 +12,7 @@ import mongoose from 'mongoose';
 import { adminRepository } from '../admin/admin.repository';
 import { AppError } from '../../utils/app-error.util';
 import authRepository from '../auth/auth.repository';
+import SchoolTeamMember from '../../models/school-team.model';
 import {
   SuspensionEvent,
   SuspensionTargetType,
@@ -77,9 +78,20 @@ export class SuspensionService {
       await adminRepository.setSchoolStatus(input.targetId, 'suspended');
     }
 
-    // B5 — kill every live session so already-issued access tokens stop
-    // working immediately (authenticate checks the session on each request).
-    await authRepository.revokeAllSessions(String(profile.userId));
+    // Block every login door (password, OTP, refresh all check User.status) and
+    // kill every live session so already-issued access tokens stop working
+    // immediately (authenticate checks the session on each request).
+    const userId = String(profile.userId);
+    await authRepository.setUserStatus(userId, 'suspended');
+    await authRepository.revokeAllSessions(userId);
+
+    // A suspended school's team members are separate User accounts acting on
+    // its behalf: end their sessions too. (Their own User.status is left alone —
+    // they may belong to other schools; see report.)
+    if (input.targetType === 'SchoolProfile') {
+      const members = await SchoolTeamMember.find({ schoolId: profile.userId, userId: { $exists: true, $ne: null } }).select('userId').lean();
+      await Promise.all(members.map((m) => authRepository.revokeAllSessions(String(m.userId))));
+    }
 
     return SuspensionEvent.create({
       targetType: input.targetType,
@@ -124,6 +136,8 @@ export class SuspensionService {
     } else {
       await adminRepository.setSchoolStatus(input.targetId, restoredStatus);
     }
+
+    await authRepository.setUserStatus(String(profile.userId), 'active');
 
     return SuspensionEvent.create({
       targetType: input.targetType,
