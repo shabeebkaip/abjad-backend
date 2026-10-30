@@ -81,13 +81,15 @@ describe('password limiters (B2)', () => {
     expect((await request(app).post('/set').set('X-Forwarded-For', ip).set('x-user', 'carol')).status).toBe(200);
   });
 
-  it('reset: 3 per hour per normalized email; case/whitespace variants share a bucket; other emails unaffected', async () => {
+  it('reset: 10 per hour per normalized email; case/whitespace variants share a bucket; other emails unaffected; 429 says when to retry', async () => {
     const ip = '10.2.0.3';
     const send = (email: string) => request(app).post('/reset').set('X-Forwarded-For', ip).send({ email });
-    expect((await send('dave@test.com')).status).toBe(200);
-    expect((await send('DAVE@test.com')).status).toBe(200);
-    expect((await send(' dave@test.com ')).status).toBe(200);
-    expect((await send('dave@test.com')).status).toBe(429);
+    const variants = ['dave@test.com', 'DAVE@test.com', ' dave@test.com '];
+    for (let i = 0; i < 10; i++) expect((await send(variants[i % 3])).status).toBe(200);
+    const blocked = await send('dave@test.com');
+    expect(blocked.status).toBe(429);
+    expect(blocked.body.message).toMatch(/Try again in \d+ minutes?/);
+    expect(blocked.headers['retry-after']).toBeDefined();
     expect((await send('erin@test.com')).status).toBe(200);
   });
 

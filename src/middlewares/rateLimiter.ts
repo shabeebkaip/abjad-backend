@@ -124,7 +124,7 @@ export const loginLimiter = rateLimit({
 });
 
 /**
- * Password-operation limiters (set / change / reset): 3 per hour PER ACCOUNT.
+ * Password-operation limiters: set / change 3 per hour, reset 10 per hour, PER ACCOUNT.
  * They sit AFTER validation in auth.routes so malformed requests don't spend
  * a slot. Business failures (wrong current password, wrong reset code) do
  * count — that is the brute-force cap we want.
@@ -144,20 +144,33 @@ const userKey = (req: Request): string => {
   return id ? `u:${id}` : req.ip ? ipKeyGenerator(req.ip) : 'unknown';
 };
 
-const passwordAccountLimiter = (keyGenerator: (req: Request) => string) =>
+// 429 body tells the user when to retry (Retry-After / RateLimit-Reset headers
+// are also sent by standardHeaders).
+const retryMessage = (req: Request): string => {
+  const resetTime = (req as Request & { rateLimit?: { resetTime?: Date } }).rateLimit?.resetTime;
+  const mins = resetTime ? Math.max(1, Math.ceil((resetTime.getTime() - Date.now()) / 60000)) : 60;
+  return `Too many attempts. Try again in ${mins} minute${mins === 1 ? '' : 's'}.`;
+};
+
+const passwordAccountLimiter = (keyGenerator: (req: Request) => string, max: number) =>
   rateLimit({
     windowMs: 60 * 60 * 1000, // 1 hour
-    max: 3,
+    max,
     keyGenerator,
-    message: { success: false, message: 'Too many attempts. Try again later.' },
+    handler: (req, res) => {
+      res.status(429).json({ success: false, message: retryMessage(req) });
+    },
     standardHeaders: true,
     legacyHeaders: false,
     skip: (_req) => isAuthThrottleDisabled() || process.env.NODE_ENV === 'test',
   });
 
-export const setPasswordLimiter = passwordAccountLimiter(userKey);
-export const changePasswordLimiter = passwordAccountLimiter(userKey);
-export const resetPasswordLimiter = passwordAccountLimiter(emailKey);
+export const setPasswordLimiter = passwordAccountLimiter(userKey, 3);
+export const changePasswordLimiter = passwordAccountLimiter(userKey, 3);
+export const resetPasswordLimiter = // Reset allows more: the OTP 3-strike lock (not this limiter) is what stops
+// code guessing, and a user who was locked and then unlocked must still be
+// able to reset with the correct code.
+passwordAccountLimiter(emailKey, 10);
 
 // NOT mounted yet: there is no 'trust proxy', so req.ip is the reverse proxy for
 // everyone and this would be ONE platform-wide bucket. Mount it only after the
