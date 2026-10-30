@@ -77,11 +77,16 @@ export const verifyOtpLimiter = rateLimit({
 });
 
 // Same token source the refresh controller reads (cookie, else body).
-const refreshTokenOf = (req: Request): string | undefined =>
-  req.cookies?.[config.cookie.refreshTokenName] || req.body?.refreshToken;
+// Non-string values (e.g. a JSON object in the body) count as "no token" so a
+// malformed request can never crash the key generator (it just gets the
+// controller's 400/401).
+const refreshTokenOf = (req: Request): string | undefined => {
+  const t = req.cookies?.[config.cookie.refreshTokenName] || req.body?.refreshToken;
+  return typeof t === 'string' && t ? t : undefined;
+};
 
 /**
- * Refresh limiter: 10 requests per 5 minutes PER SESSION
+ * Refresh limiter: 30 requests per 5 minutes PER SESSION (several tabs refresh at once)
  * Applied to: POST /auth/refresh
  * Reason: Allow burst renewals (tab switching, app background/foreground)
  *         but prevent token farming attacks.
@@ -93,11 +98,9 @@ const refreshTokenOf = (req: Request): string | undefined =>
  */
 export const refreshLimiter = rateLimit({
   windowMs: 5 * 60 * 1000, // 5 minutes
-  max: 10,
-  keyGenerator: (req) => {
-    const token = refreshTokenOf(req);
-    return token ? `rt:${crypto.createHash('sha256').update(token).digest('hex')}` : req.ip ? ipKeyGenerator(req.ip) : 'unknown';
-  },
+  max: 30,
+  // Never reached without a token: `skip` below drops tokenless requests first.
+  keyGenerator: (req) => `rt:${crypto.createHash('sha256').update(refreshTokenOf(req)!).digest('hex')}`,
   message: { success: false, message: 'Too many refresh requests' },
   standardHeaders: true,
   legacyHeaders: false,

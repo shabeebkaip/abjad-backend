@@ -28,6 +28,7 @@ app.set('trust proxy', true);
 app.use(express.json());
 app.use(cookieParser());
 app.post('/refresh', refreshLimiter, ok);
+app.post('/validated-reset', (req, res, next) => (typeof req.body?.email === 'string' && req.body.email.includes('@') ? next() : res.status(400).json({ ok: false })), resetPasswordLimiter, ok);
 app.post('/set', fakeAuth, passwordIpLimiter, setPasswordLimiter, ok);
 app.post('/change', fakeAuth, passwordIpLimiter, changePasswordLimiter, ok);
 app.post('/reset', passwordIpLimiter, resetPasswordLimiter, ok);
@@ -44,12 +45,13 @@ describe('refreshLimiter (B1)', () => {
     }
     const res = await request(app).post('/refresh').set('X-Forwarded-For', ip).set('Cookie', `${COOKIE}=real-session-a`);
     expect(res.status).toBe(200);
-    expect(res.headers['ratelimit-remaining']).toBe('9');
+    // 15 cookieless calls were made first; none of them touched this budget.
+    expect(res.headers['ratelimit-remaining']).toBe('29');
   });
 
   it('is keyed per session: users on one IP have independent budgets', async () => {
     const ip = '10.1.0.2';
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 30; i++) {
       const r = await request(app).post('/refresh').set('X-Forwarded-For', ip).set('Cookie', `${COOKIE}=sess-one`);
       expect(r.status).toBe(200);
     }
@@ -57,10 +59,19 @@ describe('refreshLimiter (B1)', () => {
     expect((await request(app).post('/refresh').set('X-Forwarded-For', ip).set('Cookie', `${COOKIE}=sess-two`)).status).toBe(200);
   });
 
+  it('a non-string refresh token is treated as no token (never a 500, never counted)', async () => {
+    const ip = '10.1.0.4';
+    for (const body of [{ refreshToken: { $ne: 1 } }, { refreshToken: ['a'] }, { refreshToken: 5 }]) {
+      const r = await request(app).post('/refresh').set('X-Forwarded-For', ip).send(body);
+      expect(r.status).toBe(200);
+      expect(r.headers['ratelimit-remaining']).toBeUndefined();
+    }
+  });
+
   it('also keys a body-supplied refresh token', async () => {
     const r = await request(app).post('/refresh').set('X-Forwarded-For', '10.1.0.3').send({ refreshToken: 'body-token' });
     expect(r.status).toBe(200);
-    expect(r.headers['ratelimit-remaining']).toBe('9');
+    expect(r.headers['ratelimit-remaining']).toBe('29');
   });
 });
 
@@ -107,5 +118,29 @@ describe('password limiters (B2)', () => {
     }
     const r = await request(app).post('/reset').set('X-Forwarded-For', ip).send({ email: 'spray-new@test.com' });
     expect(r.status).toBe(429);
+  });
+});
+
+describe('limiter behaviour (B2 nits)', () => {
+  it('a 400 validation failure placed before the limiter does not consume a slot', async () => {
+    const ip = '10.3.0.1';
+    const send = (email: string) => request(app).post('/validated-reset').set('X-Forwarded-For', ip).send({ email });
+    for (let i = 0; i < 12; i++) expect((await send('not-an-email')).status).toBe(400);
+    const ok1 = await send('gina@test.com');
+    expect(ok1.status).toBe(200);
+    expect(ok1.headers['ratelimit-remaining']).toBe('9');
+  });
+
+  it('AUTH_THROTTLE_DISABLED=true switches the limiters off', async () => {
+    process.env.AUTH_THROTTLE_DISABLED = 'true';
+    try {
+      const ip = '10.3.0.2';
+      for (let i = 0; i < 15; i++) {
+        expect((await request(app).post('/change').set('X-Forwarded-For', ip).set('x-user', 'hank')).status).toBe(200);
+        expect((await request(app).post('/refresh').set('X-Forwarded-For', ip).set('Cookie', `${COOKIE}=hank-sess`)).status).toBe(200);
+      }
+    } finally {
+      delete process.env.AUTH_THROTTLE_DISABLED;
+    }
   });
 });
