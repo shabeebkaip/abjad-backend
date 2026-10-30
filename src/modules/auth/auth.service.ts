@@ -191,7 +191,7 @@ class AuthService {
     });
 
     // Deliver OTP via Email
-    await sendOtpEmail(email, otp);
+    await sendOtpEmail(email, otp, purpose);
   }
 
   /**
