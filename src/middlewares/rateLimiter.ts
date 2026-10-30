@@ -159,6 +159,9 @@ export const setPasswordLimiter = passwordAccountLimiter(userKey);
 export const changePasswordLimiter = passwordAccountLimiter(userKey);
 export const resetPasswordLimiter = passwordAccountLimiter(emailKey);
 
+// NOT mounted yet: there is no 'trust proxy', so req.ip is the reverse proxy for
+// everyone and this would be ONE platform-wide bucket. Mount it only after the
+// real client IP is resolved (QA plan Wave 3).
 export const passwordIpLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
   max: 30,
