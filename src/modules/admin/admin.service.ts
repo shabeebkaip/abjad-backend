@@ -235,6 +235,8 @@ export class AdminService {
   async deleteTeacher(profileId: string) {
     const profile = await TeacherProfile.findById(profileId);
     if (!profile) throw AppError.notFound('Teacher profile not found');
+    // Revoke first so the deleted user's access tokens stop passing authenticate.
+    if (profile.userId) await authRepository.revokeAllSessions(String(profile.userId));
     await Promise.all([
       TeacherProfile.findByIdAndDelete(profileId),
       profile.userId ? User.findByIdAndDelete(profile.userId) : Promise.resolve(),
@@ -244,6 +246,8 @@ export class AdminService {
   async deleteSchool(profileId: string) {
     const profile = await SchoolProfile.findById(profileId);
     if (!profile) throw AppError.notFound('School profile not found');
+    // Revoke first so the deleted user's access tokens stop passing authenticate.
+    if (profile.userId) await authRepository.revokeAllSessions(String(profile.userId));
     await Promise.all([
       SchoolProfile.findByIdAndDelete(profileId),
       profile.userId ? User.findByIdAndDelete(profile.userId) : Promise.resolve(),
