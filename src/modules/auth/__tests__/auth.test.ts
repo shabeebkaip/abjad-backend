@@ -386,24 +386,23 @@ describe('POST /api/auth/verify-otp — error cases', () => {
     expect(res.status).toBe(400);
   });
 
-  it('returns 429 when OTP attempts exceed max (3)', async () => {
-    // Plant OTP with attempts already at max
-    await OtpCode.findOneAndUpdate(
-      { email: TEST_EMAIL_TEACHER, purpose: 'signup' },
-      {
-        code: await hashOtp('111111'),
-        expiresAt: otpExpiry(),
-        attempts: 3, // already at maxAttempts
-      },
-      { upsert: true, new: true },
-    );
-
-    const res = await request(app)
+  it('signup: invalidates the code on the 3rd wrong attempt WITHOUT claiming an account lock (B3)', async () => {
+    await plantOtp(TEST_EMAIL_TEACHER, 'signup', '111111');
+    const wrong = () => request(app)
       .post('/api/auth/verify-otp')
       .send({ email: TEST_EMAIL_TEACHER, code: '999999', purpose: 'signup', password: TEST_PASSWORD });
 
-    expect(res.status).toBe(429);
-    expect(res.body.message).toContain('locked');
+    expect((await wrong()).status).toBe(401);
+    expect((await wrong()).status).toBe(401);
+    const third = await wrong();
+    expect(third.status).toBe(429);
+    expect(third.body.message).toContain('request a new code');
+    expect(third.body.message).not.toContain('locked');
+    expect(await OtpCode.countDocuments({ email: TEST_EMAIL_TEACHER, purpose: 'signup' })).toBe(0);
+
+    // Nothing is locked: a fresh code can be requested immediately.
+    const send = await request(app).post('/api/auth/send-otp').send({ email: TEST_EMAIL_TEACHER, purpose: 'signup' });
+    expect(send.status).toBe(200);
   });
 
   it('returns 400 for invalid role value', async () => {

@@ -339,9 +339,8 @@ describe('POST /api/auth/login', () => {
     const otp = '112233';
     await plantOtp(TEST_EMAIL, 'login', otp);
 
-    // config.otp.maxAttempts is 3 — the 4th verify (any code) is the one
-    // that finds attempts >= max and applies the lock.
-    for (let i = 0; i < 4; i++) {
+    // config.otp.maxAttempts is 3 — the 3rd wrong code applies the lock (B3).
+    for (let i = 0; i < 3; i++) {
       await request(app).post('/api/auth/verify-otp').send({ email: TEST_EMAIL, code: '000000', purpose: 'login' });
     }
 
@@ -354,6 +353,58 @@ describe('POST /api/auth/login', () => {
       .send({ email: TEST_EMAIL, password: TEST_PASSWORD }); // even the CORRECT password is now blocked
 
     expect(res.status).toBe(429);
+  });
+
+  it('B3: the 3rd wrong code itself returns 429 "locked for 15 minutes" and sets lockedUntil', async () => {
+    await createUserWithPassword(TEST_EMAIL, TEST_PASSWORD);
+    await plantOtp(TEST_EMAIL, 'login', '112233');
+    const wrong = () => request(app).post('/api/auth/verify-otp').send({ email: TEST_EMAIL, code: '000000', purpose: 'login' });
+
+    const r1 = await wrong();
+    const r2 = await wrong();
+    expect(r1.status).toBe(401);
+    expect(r1.body.message).toContain('2 attempt(s) remaining');
+    expect(r2.body.message).toContain('1 attempt(s) remaining');
+    const r3 = await wrong();
+    expect(r3.status).toBe(429);
+    expect(r3.body.message).toContain('locked for 15 minutes');
+    const user = await User.findOne({ email: TEST_EMAIL });
+    expect(user!.lockedUntil!.getTime()).toBeGreaterThan(Date.now());
+  });
+
+  it('B3: requesting a new code does NOT reset the wrong-code count (resend cannot dodge the lock)', async () => {
+    await createUserWithPassword(TEST_EMAIL, TEST_PASSWORD);
+    await plantOtp(TEST_EMAIL, 'login', '112233');
+    const wrong = () => request(app).post('/api/auth/verify-otp').send({ email: TEST_EMAIL, code: '000000', purpose: 'login' });
+
+    await wrong();
+    await wrong();
+    expect((await request(app).post('/api/auth/send-otp').send({ email: TEST_EMAIL, purpose: 'login' })).status).toBe(200);
+    const r3 = await wrong(); // 3rd wrong overall, on the NEW code
+    expect(r3.status).toBe(429);
+    expect((await User.findOne({ email: TEST_EMAIL }))!.lockedUntil!.getTime()).toBeGreaterThan(Date.now());
+  });
+
+  it('B3: a successful verify resets the wrong-code counter', async () => {
+    await createUserWithPassword(TEST_EMAIL, TEST_PASSWORD);
+    await plantOtp(TEST_EMAIL, 'login', '112233');
+    await request(app).post('/api/auth/verify-otp').send({ email: TEST_EMAIL, code: '000000', purpose: 'login' });
+    expect((await User.findOne({ email: TEST_EMAIL }))!.otpFailedAttempts).toBe(1);
+    const ok = await request(app).post('/api/auth/verify-otp').send({ email: TEST_EMAIL, code: '112233', purpose: 'login' });
+    expect(ok.status).toBe(200);
+    expect((await User.findOne({ email: TEST_EMAIL }))!.otpFailedAttempts).toBe(0);
+  });
+
+  it('B3: the reset path locks on the 3rd wrong code too (RESETPWD-007)', async () => {
+    await createUserWithPassword(TEST_EMAIL, TEST_PASSWORD);
+    await plantOtp(TEST_EMAIL, 'reset', '445566');
+    let last: request.Response | undefined;
+    for (let i = 0; i < 3; i++) {
+      last = await request(app).post('/api/auth/reset-password').send({ email: TEST_EMAIL, code: '000000', newPassword: NEW_PASSWORD });
+    }
+    expect(last!.status).toBe(429);
+    const login = await request(app).post('/api/auth/login').send({ email: TEST_EMAIL, password: TEST_PASSWORD });
+    expect(login.status).toBe(429);
   });
 
   it('returns 400 for missing password', async () => {

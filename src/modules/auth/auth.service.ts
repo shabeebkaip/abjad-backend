@@ -43,27 +43,51 @@ class AuthService {
    * Client rollout override: when AUTH_THROTTLE_DISABLED is set, wrong codes
    * still fail with the normal "Invalid OTP" message, but the attempt is
    * never counted toward the 3-strike lock and the lock is never applied.
+   * `user` is the existing account (null for a fresh signup).
    */
-  private async verifyAndConsumeOtp(email: string, purpose: 'signup' | 'login' | 'reset', code: string): Promise<void> {
+  private async verifyAndConsumeOtp(
+    email: string,
+    purpose: 'signup' | 'login' | 'reset',
+    code: string,
+    user: { _id?: unknown } | null,
+  ): Promise<void> {
     const throttleDisabled = isAuthThrottleDisabled();
     const otpRecord = await authRepository.findOtp(email, purpose);
     if (!otpRecord) {
       throw AppError.notFound(`No OTP found for ${email}. Please request a new OTP.`);
     }
 
-    if (!throttleDisabled && otpRecord.attempts >= config.otp.maxAttempts) {
-      const lockUntil = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
-      await authRepository.lockAccount(email, lockUntil);
-      throw AppError.tooManyRequests(`Too many failed OTP verification attempts (${otpRecord.attempts}/${config.otp.maxAttempts}). Account locked for 15 minutes. Please try again later.`);
-    }
-
     const valid = await verifyOtpHash(code, otpRecord.code);
     if (!valid) {
-      if (!throttleDisabled) {
-        await authRepository.incrementOtpAttempts(otpRecord._id!.toString());
+      if (throttleDisabled) {
+        throw AppError.unauthorized('Invalid OTP code.');
       }
-      const remainingAttempts = config.otp.maxAttempts - (otpRecord.attempts + 1);
-      throw AppError.unauthorized(`Invalid OTP code. You have ${remainingAttempts} attempt(s) remaining.`);
+      const max = config.otp.maxAttempts;
+
+      if (user) {
+        // Existing account: count on the USER (otpFailedAttempts), not the OTP
+        // record — upsertOtp resets record.attempts on every resend, which let
+        // a caller dodge the lock forever by requesting a fresh code. Lock on
+        // the max-th wrong code itself (not the next call), and drop the OTP.
+        const failures = await authRepository.incrementOtpFailures(email);
+        if (failures >= max) {
+          await authRepository.lockAccount(email, new Date(Date.now() + 15 * 60 * 1000));
+          await authRepository.deleteOtp(email, purpose);
+          throw AppError.tooManyRequests(`Too many failed OTP verification attempts (${max}/${max}). Account locked for 15 minutes. Please try again later.`);
+        }
+        throw AppError.unauthorized(`Invalid OTP code. You have ${max - failures} attempt(s) remaining.`);
+      }
+
+      // Signup: no User doc exists, so there is nothing to lock (and we must
+      // not claim a lock). Invalidate the code instead; per-email send/verify
+      // limiters bound how many fresh codes can be requested.
+      const attempts = otpRecord.attempts + 1;
+      if (attempts >= max) {
+        await authRepository.deleteOtp(email, purpose);
+        throw AppError.tooManyRequests('Too many incorrect codes. Please request a new code.');
+      }
+      await authRepository.incrementOtpAttempts(otpRecord._id!.toString());
+      throw AppError.unauthorized(`Invalid OTP code. You have ${max - attempts} attempt(s) remaining.`);
     }
 
     await authRepository.deleteOtp(email, purpose);
@@ -194,7 +218,7 @@ class AuthService {
     this.assertAccountNotLocked(user);
 
     // 1-4. Verify + consume the OTP (shared with resetPassword)
-    await this.verifyAndConsumeOtp(email, purpose, code);
+    await this.verifyAndConsumeOtp(email, purpose, code, user);
 
     // 5. Find or create user (user already fetched in step 0)
     const isNewUser = !user;
@@ -364,7 +388,7 @@ class AuthService {
     const user = await authRepository.findUserByEmail(email);
     this.assertAccountNotLocked(user);
 
-    await this.verifyAndConsumeOtp(email, 'reset', code);
+    await this.verifyAndConsumeOtp(email, 'reset', code, user);
 
     // send-otp already rejects 'reset' for unknown emails, but a direct API
     // call could bypass that (same defense-in-depth pattern as verifyOtp).

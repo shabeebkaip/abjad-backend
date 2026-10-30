@@ -110,9 +110,24 @@ class AuthRepository {
   async resetFailedLogins(email: string) {
     return User.findOneAndUpdate(
       { email: email.toLowerCase() },
-      { failedLoginAttempts: 0, lockedUntil: null },
+      { failedLoginAttempts: 0, otpFailedAttempts: 0, lockedUntil: null },
       { new: true }
     );
+  }
+
+  /**
+   * Atomically bump the user's wrong-OTP counter (separate from the password
+   * counter; shares lockedUntil). Persists across OTP resends. Returns the
+   * new count, or 0 if there is no such user. On reaching the cap the counter
+   * is zeroed so the first wrong code after the lock expires starts fresh.
+   */
+  async incrementOtpFailures(email: string): Promise<number> {
+    const user = await User.findOneAndUpdate(
+      { email: email.toLowerCase() },
+      { $inc: { otpFailedAttempts: 1 } },
+      { new: true },
+    );
+    return user?.otpFailedAttempts ?? 0;
   }
 
   /**
@@ -121,7 +136,7 @@ class AuthRepository {
   async lockAccount(email: string, until: Date) {
     return User.findOneAndUpdate(
       { email: email.toLowerCase() },
-      { lockedUntil: until },
+      { lockedUntil: until, otpFailedAttempts: 0 },
       { new: true }
     );
   }
