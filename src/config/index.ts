@@ -16,6 +16,9 @@ export const config = {
     accessSecret: process.env.JWT_ACCESS_SECRET || 'access-secret-change-me',
     refreshSecret: process.env.JWT_REFRESH_SECRET || 'refresh-secret-change-me',
     accessExpiresIn: process.env.JWT_ACCESS_EXPIRES_IN || '15m',
+    // Admin app has no refresh flow, so admins get a longer-lived access token
+    // (still revocable via the session check). B7.
+    adminAccessExpiresIn: process.env.JWT_ADMIN_ACCESS_EXPIRES_IN || '8h',
     refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '30d',
   },
 

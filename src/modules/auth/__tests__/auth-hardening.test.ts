@@ -3,6 +3,7 @@
  * admin token TTL, change-password rules, consent recording.
  */
 import mongoose from 'mongoose';
+import jwt from 'jsonwebtoken';
 import request from 'supertest';
 import app from '../../../app';
 import User from '../../../models/user.model';
@@ -183,5 +184,18 @@ describe('suspension blocks login (User.status)', () => {
     expect((await me(m.accessToken)).status).toBe(200);
     await suspensionService.suspend({ targetType: 'SchoolProfile', targetId: profile._id.toString(), reasonCode: 'policy_violation' });
     expect((await me(m.accessToken)).status).toBe(401);
+  });
+});
+
+describe('B7 admin access-token TTL', () => {
+  it('admin tokens use JWT_ADMIN_ACCESS_EXPIRES_IN (8h), users keep JWT_ACCESS_EXPIRES_IN (15m)', async () => {
+    await seed(ADMIN_EMAIL, 'admin');
+    await seed();
+    const l = await request(app).post('/api/admin/auth/login').send({ email: ADMIN_EMAIL, password: PASSWORD });
+    const adminTok = jwt.decode(l.body.data.accessToken) as { exp: number; iat: number };
+    expect(adminTok.exp - adminTok.iat).toBe(8 * 3600);
+    const u = await login();
+    const userTok = jwt.decode(u.accessToken) as { exp: number; iat: number };
+    expect(userTok.exp - userTok.iat).toBe(15 * 60);
   });
 });

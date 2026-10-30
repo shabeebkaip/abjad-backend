@@ -51,7 +51,7 @@ export const signAccessToken = (payload: JwtPayload, sessionId: string): string 
     { ...payload, sid: sessionId },
     config.jwt.accessSecret as string,
     {
-      ...commonSignOptions(config.jwt.accessExpiresIn as string),
+      ...commonSignOptions((payload.role === 'admin' ? config.jwt.adminAccessExpiresIn : config.jwt.accessExpiresIn) as string),
       subject: payload.userId,
     },
   );
