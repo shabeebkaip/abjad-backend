@@ -351,10 +351,11 @@ class AuthService {
    * (stolen-session mitigation: someone with a hijacked refresh token loses
    * it the moment the legitimate owner changes their password). The
    * caller's OWN current session is deliberately kept alive — `currentRefreshToken`
-   * (the raw token from their cookie, passed by the controller) is excluded
+   * (cookie) and/or `currentSessionId` (the access token's sid, so Bearer-only
+   * API callers keep their session too) are excluded
    * so changing your own password doesn't log you out of the tab you did it from.
    */
-  async changePassword(userId: string, currentPassword: string, newPassword: string, currentRefreshToken?: string): Promise<void> {
+  async changePassword(userId: string, currentPassword: string, newPassword: string, currentRefreshToken?: string, currentSessionId?: string): Promise<void> {
     const user = await authRepository.findUserByIdWithPassword(userId);
     if (!user) throw AppError.notFound('User not found');
     if (!user.password) throw AppError.badRequest('No password set yet. Use set-password instead.');
@@ -365,8 +366,10 @@ class AuthService {
     user.password = await hashPassword(newPassword);
     await user.save();
 
-    const exceptHash = currentRefreshToken ? hashToken(currentRefreshToken) : undefined;
-    await authRepository.revokeAllSessionsExcept(userId, exceptHash);
+    await authRepository.revokeAllSessionsExcept(userId, {
+      refreshTokenHash: currentRefreshToken ? hashToken(currentRefreshToken) : undefined,
+      sessionId: currentSessionId,
+    });
   }
 
   /**

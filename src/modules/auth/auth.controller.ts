@@ -74,7 +74,7 @@ class AuthController {
     try {
       const userId = (req as any).user?.userId;
       const currentRefreshToken = req.cookies?.[config.cookie.refreshTokenName];
-      await authService.changePassword(userId, req.body.currentPassword, req.body.newPassword, currentRefreshToken);
+      await authService.changePassword(userId, req.body.currentPassword, req.body.newPassword, currentRefreshToken, (req as AuthRequest).user?.sid);
       res.status(200).json({ success: true, message: 'Password changed successfully' });
     } catch (error) {
       next(error);

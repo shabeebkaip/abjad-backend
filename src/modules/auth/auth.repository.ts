@@ -281,15 +281,17 @@ class AuthRepository {
   }
 
   /**
-   * Revoke every session for a user EXCEPT one (by refresh-token hash).
-   * Used by change-password (W2) — rotating the password should kill every
-   * OTHER device/session, but not the one the user is actively using to make
-   * the change. Falls back to revoking everything if no hash is given (e.g.
-   * the caller has no refresh cookie — safe default, not a broken one).
+   * Revoke every session for a user EXCEPT the caller's own, identified by
+   * session id and/or refresh-token hash. Used by change-password (W2) —
+   * rotating the password kills every OTHER device but not the one making the
+   * change. With neither given, everything is revoked (safe default).
    */
-  async revokeAllSessionsExcept(userId: string, exceptRefreshTokenHash?: string) {
+  async revokeAllSessionsExcept(userId: string, except: { refreshTokenHash?: string; sessionId?: string } = {}) {
+    const keep: Record<string, unknown>[] = [];
+    if (except.refreshTokenHash) keep.push({ refreshTokenHash: except.refreshTokenHash });
+    if (except.sessionId && mongoose.isValidObjectId(except.sessionId)) keep.push({ _id: except.sessionId });
     return Session.updateMany(
-      { userId, ...(exceptRefreshTokenHash ? { refreshTokenHash: { $ne: exceptRefreshTokenHash } } : {}) },
+      { userId, ...(keep.length ? { $nor: keep } : {}) },
       { isRevoked: true }
     );
   }
