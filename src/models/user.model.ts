@@ -19,6 +19,7 @@ export interface IUser {
   profileStep: 'basic' | 'profile' | 'documents' | 'complete';
   failedLoginAttempts: number;
   otpFailedAttempts: number;
+  otpLastFailedAt?: Date;
   lockedUntil?: Date;
   lastLoginAt?: Date;
   loginCount: number;
@@ -71,6 +72,7 @@ export interface IUserDocument extends Document {
   profileStep: 'basic' | 'profile' | 'documents' | 'complete';
   failedLoginAttempts: number;
   otpFailedAttempts: number;
+  otpLastFailedAt?: Date;
   lockedUntil?: Date;
   lastLoginAt?: Date;
   loginCount: number;
@@ -94,7 +96,7 @@ export interface IUserMethods {
   incrementLoginCount(): Promise<IUserDocument>;
   suspend(reason: string): Promise<IUserDocument>;
   unsuspend(): Promise<IUserDocument>;
-  toSafeObject(): Omit<IUser, 'failedLoginAttempts' | 'otpFailedAttempts' | 'lockedUntil' | 'deviceTokens' | 'password'>;
+  toSafeObject(): Omit<IUser, 'failedLoginAttempts' | 'otpFailedAttempts' | 'otpLastFailedAt' | 'lockedUntil' | 'deviceTokens' | 'password'>;
 }
 
 export type UserDocument = IUserDocument & IUserMethods;
@@ -151,6 +153,7 @@ const userSchema = new Schema<UserDocument>(
     },
     failedLoginAttempts: { type: Number, default: 0 },
     otpFailedAttempts: { type: Number, default: 0 },
+    otpLastFailedAt: { type: Date },
     lockedUntil: { type: Date },
     lastLoginAt: { type: Date },
     loginCount: { type: Number, default: 0 },
@@ -234,6 +237,7 @@ userSchema.methods.toSafeObject = function (this: UserDocument) {
   delete obj.deviceTokens;
   delete obj.failedLoginAttempts;
   delete obj.otpFailedAttempts;
+  delete obj.otpLastFailedAt;
   delete obj.lockedUntil;
   delete obj.password;
   delete obj.__v;

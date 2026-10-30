@@ -4,7 +4,6 @@
  */
 import mongoose from 'mongoose';
 import request from 'supertest';
-import jwt from 'jsonwebtoken';
 import app from '../../../app';
 import User from '../../../models/user.model';
 import Session from '../../../models/session.model';
@@ -15,7 +14,6 @@ import SchoolTeamMember from '../../../models/school-team.model';
 import authRepository from '../auth.repository';
 import { hashPassword } from '../../../utils/password.util';
 import { hashOtp, otpExpiry } from '../../../utils/otp.util';
-import { suspensionService } from '../../suspension/suspension.service';
 import { adminService } from '../../admin/admin.service';
 
 const COOKIE = 'abjad_session';
@@ -92,4 +90,59 @@ describe('B5 gaps', () => {
     expect((await get()).status).toBe(401);
   });
 });
-void [jwt, suspensionService, plantOtp];
+
+describe('OTP attempt counting (B3 hardening)', () => {
+  const wrong = (email = EMAIL) => request(app).post('/api/auth/verify-otp').send({ email, code: '000000', purpose: 'login' });
+
+  it('parallel wrong guesses cannot exceed 3 per lock window', async () => {
+    await seed();
+    await plantOtp(EMAIL, 'login', '123456');
+    const results = await Promise.all(Array.from({ length: 10 }, () => wrong()));
+    const statuses = results.map((r) => r.status);
+    expect(statuses.filter((x) => x === 401)).toHaveLength(2); // counts 1 and 2 are compared
+    expect(statuses.filter((x) => x === 429)).toHaveLength(8); // 3rd locks, 4th+ refused unseen
+    expect((await User.findOne({ email: EMAIL }))!.lockedUntil!.getTime()).toBeGreaterThan(Date.now());
+  });
+
+  it('a parallel CORRECT code racing past the cap is refused once the count is over 3', async () => {
+    await seed();
+    await plantOtp(EMAIL, 'login', '123456');
+    await User.updateOne({ email: EMAIL }, { otpFailedAttempts: 3, otpLastFailedAt: new Date() });
+    const res = await request(app).post('/api/auth/verify-otp').send({ email: EMAIL, code: '123456', purpose: 'login' });
+    expect(res.status).toBe(429);
+  });
+
+  it('stale failures expire: a count older than the lock window restarts at 1', async () => {
+    await seed();
+    await plantOtp(EMAIL, 'login', '123456');
+    await User.updateOne({ email: EMAIL }, { otpFailedAttempts: 2, otpLastFailedAt: new Date(Date.now() - 16 * 60 * 1000) });
+    const res = await wrong();
+    expect(res.status).toBe(401);
+    expect(res.body.message).toContain('2 attempt(s) remaining');
+  });
+
+  it('after a lock expires, the first wrong code does not re-lock instantly', async () => {
+    await seed();
+    await plantOtp(EMAIL, 'login', '123456');
+    await User.updateOne({ email: EMAIL }, {
+      otpFailedAttempts: 3, otpLastFailedAt: new Date(Date.now() - 16 * 60 * 1000), lockedUntil: new Date(Date.now() - 1000),
+    });
+    const res = await wrong();
+    expect(res.status).toBe(401);
+    expect(res.body.message).toContain('2 attempt(s) remaining');
+  });
+
+  it('with AUTH_THROTTLE_DISABLED nothing is counted or locked', async () => {
+    process.env.AUTH_THROTTLE_DISABLED = 'true';
+    try {
+      await seed();
+      await plantOtp(EMAIL, 'login', '123456');
+      for (let i = 0; i < 5; i++) expect((await wrong()).status).toBe(401);
+      const u = await User.findOne({ email: EMAIL });
+      expect(u!.otpFailedAttempts).toBe(0);
+      expect(u!.lockedUntil).toBeFalsy();
+    } finally {
+      delete process.env.AUTH_THROTTLE_DISABLED;
+    }
+  });
+});

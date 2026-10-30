@@ -111,22 +111,43 @@ class AuthRepository {
   async resetFailedLogins(email: string) {
     return User.findOneAndUpdate(
       { email: email.toLowerCase() },
-      { failedLoginAttempts: 0, otpFailedAttempts: 0, lockedUntil: null },
+      { failedLoginAttempts: 0, otpFailedAttempts: 0, otpLastFailedAt: null, lockedUntil: null },
       { new: true }
     );
   }
 
   /**
-   * Atomically bump the user's wrong-OTP counter (separate from the password
-   * counter; shares lockedUntil). Persists across OTP resends. Returns the
-   * new count, or 0 if there is no such user. On reaching the cap the counter
-   * is zeroed so the first wrong code after the lock expires starts fresh.
+   * Atomically register one OTP verification attempt for the user and return
+   * the new count (0 if no such user). Called BEFORE the code is compared, so
+   * concurrent guesses each get a distinct count and the caller can refuse
+   * everything past the cap — no check-then-act race. The counter is separate
+   * from the password one (shared lockedUntil) and survives OTP resends. It
+   * restarts at 1 when the previous attempt is older than `windowMs` (the lock
+   * window), so stale failures don't accumulate forever. It is deliberately NOT
+   * zeroed when the lock is applied: it stays above the cap for the lock's
+   * duration, which also rejects stragglers that passed the lock gate just
+   * before it was set. Cleared by resetFailedLogins on success.
    */
-  async incrementOtpFailures(email: string): Promise<number> {
+  async registerOtpAttempt(email: string, windowMs: number): Promise<number> {
+    const now = new Date();
+    const cutoff = new Date(now.getTime() - windowMs);
     const user = await User.findOneAndUpdate(
       { email: email.toLowerCase() },
-      { $inc: { otpFailedAttempts: 1 } },
-      { new: true },
+      [
+        {
+          $set: {
+            otpFailedAttempts: {
+              $cond: [
+                { $and: [{ $ne: [{ $type: '$otpLastFailedAt' }, 'missing'] }, { $lt: ['$otpLastFailedAt', cutoff] }] },
+                1,
+                { $add: [{ $ifNull: ['$otpFailedAttempts', 0] }, 1] },
+              ],
+            },
+            otpLastFailedAt: now,
+          },
+        },
+      ],
+      { new: true, updatePipeline: true },
     );
     return user?.otpFailedAttempts ?? 0;
   }
@@ -137,7 +158,7 @@ class AuthRepository {
   async lockAccount(email: string, until: Date) {
     return User.findOneAndUpdate(
       { email: email.toLowerCase() },
-      { lockedUntil: until, otpFailedAttempts: 0 },
+      { lockedUntil: until },
       { new: true }
     );
   }

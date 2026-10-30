@@ -57,36 +57,50 @@ class AuthService {
       throw AppError.notFound(`No OTP found for ${email}. Please request a new OTP.`);
     }
 
+    const max = config.otp.maxAttempts;
+    const lockMs = 15 * 60 * 1000;
+    const lockedMsg = `Too many failed OTP verification attempts (${max}/${max}). Account locked for 15 minutes. Please try again later.`;
+
+    // Count the attempt ATOMICALLY before comparing, so parallel guesses can't
+    // slip past the cap: each gets a distinct count and anything over `max` is
+    // refused without even looking at the code.
+    let attempts = 0;
+    if (!throttleDisabled) {
+      if (user) {
+        // Existing account: count on the USER (otpFailedAttempts), not the OTP
+        // record — upsertOtp resets record.attempts on every resend, which let
+        // a caller dodge the lock forever by requesting a fresh code.
+        attempts = await authRepository.registerOtpAttempt(email, lockMs);
+        if (attempts > max) throw AppError.tooManyRequests(lockedMsg);
+      } else {
+        // Signup: no User doc exists, so there is nothing to lock (and we must
+        // not claim a lock). The count lives on the OTP record, which is
+        // invalidated at the cap; per-email limiters bound fresh codes.
+        const updated = await authRepository.incrementOtpAttempts(otpRecord._id!.toString());
+        attempts = updated?.attempts ?? max + 1;
+        if (attempts > max) {
+          await authRepository.deleteOtp(email, purpose);
+          throw AppError.tooManyRequests('Too many incorrect codes. Please request a new code.');
+        }
+      }
+    }
+
     const valid = await verifyOtpHash(code, otpRecord.code);
     if (!valid) {
       if (throttleDisabled) {
         throw AppError.unauthorized('Invalid OTP code.');
       }
-      const max = config.otp.maxAttempts;
-
       if (user) {
-        // Existing account: count on the USER (otpFailedAttempts), not the OTP
-        // record — upsertOtp resets record.attempts on every resend, which let
-        // a caller dodge the lock forever by requesting a fresh code. Lock on
-        // the max-th wrong code itself (not the next call), and drop the OTP.
-        const failures = await authRepository.incrementOtpFailures(email);
-        if (failures >= max) {
-          await authRepository.lockAccount(email, new Date(Date.now() + 15 * 60 * 1000));
+        if (attempts >= max) {
+          // Lock on the max-th wrong code itself (not the next call), drop the OTP.
+          await authRepository.lockAccount(email, new Date(Date.now() + lockMs));
           await authRepository.deleteOtp(email, purpose);
-          throw AppError.tooManyRequests(`Too many failed OTP verification attempts (${max}/${max}). Account locked for 15 minutes. Please try again later.`);
+          throw AppError.tooManyRequests(lockedMsg);
         }
-        throw AppError.unauthorized(`Invalid OTP code. You have ${max - failures} attempt(s) remaining.`);
-      }
-
-      // Signup: no User doc exists, so there is nothing to lock (and we must
-      // not claim a lock). Invalidate the code instead; per-email send/verify
-      // limiters bound how many fresh codes can be requested.
-      const attempts = otpRecord.attempts + 1;
-      if (attempts >= max) {
+      } else if (attempts >= max) {
         await authRepository.deleteOtp(email, purpose);
         throw AppError.tooManyRequests('Too many incorrect codes. Please request a new code.');
       }
-      await authRepository.incrementOtpAttempts(otpRecord._id!.toString());
       throw AppError.unauthorized(`Invalid OTP code. You have ${max - attempts} attempt(s) remaining.`);
     }
 
