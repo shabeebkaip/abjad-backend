@@ -12,38 +12,45 @@ export interface AuthRequest extends Request {
 }
 
 export const authenticate = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  // Get access token from Authorization header only
+  const token = req.headers.authorization?.split(' ')[1];
+
+  if (!token) {
+    return res.status(401).json({
+      success: false,
+      message: 'Authorization token is required. Please provide a valid access token.',
+    });
+  }
+
+  // Only JWT verification failures are a 401 (throws on invalid/expired).
+  let user: ReturnType<typeof verifyAccessToken>;
   try {
-    // Get access token from Authorization header only
-    const token = req.headers.authorization?.split(' ')[1];
+    user = verifyAccessToken(token);
+  } catch {
+    return res.status(401).json({
+      success: false,
+      message: 'Invalid or expired access token. Please login again.',
+    });
+  }
 
-    if (!token) {
-      return res.status(401).json({
-        success: false,
-        message: 'Authorization token is required. Please provide a valid access token.',
-      });
-    }
-
-    // Verify token (throws on invalid/expired)
-    const user = verifyAccessToken(token);
-
-    // B5 — the token is only as good as its session. One indexed _id lookup
-    // per request. Tokens minted before this check (no sid) are rejected with
-    // the same 401 so the client's silent refresh mints a sid-bearing one.
+  // B5 — the token is only as good as its session. One indexed _id lookup
+  // per request. Tokens minted before this check (no sid) are rejected with
+  // the same 401 so the client's silent refresh mints a sid-bearing one.
+  // A DB error here is NOT an auth failure: pass it on (500) so a Mongo blip
+  // doesn't log every user out.
+  try {
     if (!user.sid || !(await authRepository.isSessionActive(user.sid, user.userId))) {
       return res.status(401).json({
         success: false,
         message: 'Session expired or revoked. Please login again.',
       });
     }
-
-    req.user = user;
-    return next();
-  } catch (error) {
-    return res.status(401).json({
-      success: false,
-      message: 'Invalid or expired access token. Please login again.',
-    });
+  } catch (err) {
+    return next(err);
   }
+
+  req.user = user;
+  return next();
 };
 
 export const authorize = (...roles: string[]) => {
