@@ -22,26 +22,74 @@ function getTransporter(): nodemailer.Transporter {
   return _transporter;
 }
 
-// Subject/heading/intro per purpose. Reset gets its own wording plus a
-// "not you?" line so a recipient who never asked can tell what this is.
-export const otpEmailCopy = (purpose: 'signup' | 'login' | 'reset' = 'login') =>
-  purpose === 'reset'
-    ? {
-        subject: 'Reset your Abjad password',
-        heading: 'Reset Your Password',
-        intro: 'Use the code below to reset your Abjad password.',
-        footer: "If you didn't request this, you can ignore this email — your password will not change.",
-      }
-    : {
-        subject: 'Your Abjad Verification Code',
-        heading: 'Your Verification Code',
-        intro: 'Use the code below to complete your login or registration on Abjad.',
-        footer: '',
-      };
+type OtpPurpose = 'signup' | 'login' | 'reset';
+
+// Per-purpose copy, Arabic first (product default) then English. Each purpose
+// has its own subject; reset also carries a "not you?" line. Kept in place
+// (not in the admin template registry) — migrating is a later wave.
+const COPY: Record<OtpPurpose, { subject: string; ar: Lang; en: Lang }> = {
+  signup: {
+    subject: 'رمز التحقق لإنشاء حسابك في أبجد | Verify your Abjad account',
+    ar: { heading: 'تحقق من حسابك', intro: 'استخدم الرمز أدناه لإكمال إنشاء حسابك في أبجد.', footer: '' },
+    en: { heading: 'Verify Your Account', intro: 'Use the code below to finish creating your Abjad account.', footer: '' },
+  },
+  login: {
+    subject: 'رمز تسجيل الدخول إلى أبجد | Your Abjad login code',
+    ar: { heading: 'رمز تسجيل الدخول', intro: 'استخدم الرمز أدناه لتسجيل الدخول إلى حسابك في أبجد.', footer: '' },
+    en: { heading: 'Your Login Code', intro: 'Use the code below to sign in to your Abjad account.', footer: '' },
+  },
+  reset: {
+    subject: 'إعادة تعيين كلمة مرور أبجد | Reset your Abjad password',
+    ar: {
+      heading: 'إعادة تعيين كلمة المرور',
+      intro: 'تلقينا طلبًا لإعادة تعيين كلمة مرور حسابك في أبجد. استخدم الرمز أدناه.',
+      footer: 'إذا لم تطلب ذلك، تجاهل هذه الرسالة؛ كلمة مرورك لم تتغير.',
+    },
+    en: {
+      heading: 'Reset Your Password',
+      intro: 'We received a request to reset your Abjad password. Use the code below.',
+      footer: "If you didn't request this, ignore this email. Your password is unchanged.",
+    },
+  },
+};
+
+interface Lang { heading: string; intro: string; footer: string }
+
+export const otpEmailCopy = (purpose: OtpPurpose = 'login') => COPY[purpose];
+
+const block = (l: Lang, dir: 'rtl' | 'ltr', otp: string, expiry: string) => `
+  <div dir="${dir}" style="text-align:${dir === 'rtl' ? 'right' : 'left'};">
+    <h2 style="color:#1a1a1a;">${l.heading}</h2>
+    <p style="color:#555;">${l.intro}</p>
+    <div style="background:#f4f4f4;border-radius:8px;padding:24px;text-align:center;margin:24px 0;" dir="ltr">
+      <span style="font-size:36px;font-weight:bold;letter-spacing:8px;color:#1a1a1a;">${otp}</span>
+    </div>
+    <p style="color:#888;font-size:13px;">${expiry}</p>
+    ${l.footer ? `<p style="color:#888;font-size:13px;">${l.footer}</p>` : ''}
+  </div>`;
+
+/** Subject + plain-text + HTML (Arabic block first, then English). */
+export const buildOtpEmail = (otp: string, purpose: OtpPurpose = 'login') => {
+  const copy = otpEmailCopy(purpose);
+  const m = config.otp.expiryMinutes;
+  const text = [
+    `${copy.ar.intro} ${otp} (تنتهي الصلاحية خلال ${m} دقائق)`,
+    copy.ar.footer,
+    '',
+    `${copy.en.intro} ${otp} (expires in ${m} minutes)`,
+    copy.en.footer,
+  ].filter((l, i) => l || i === 2).join('\n');
+  const html = `
+        <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px;">
+          ${block(copy.ar, 'rtl', otp, `تنتهي صلاحية هذا الرمز خلال <strong>${m}</strong> دقائق. لا تشاركه مع أحد.`)}
+          <hr style="border:none;border-top:1px solid #eee;margin:24px 0;" />
+          ${block(copy.en, 'ltr', otp, `This code expires in <strong>${m} minutes</strong>. Do not share it with anyone.`)}
+        </div>`;
+  return { subject: copy.subject, text, html };
+};
 
 // Send OTP via Email
-export const sendOtpEmail = async (email: string, otp: string, purpose: 'signup' | 'login' | 'reset' = 'login'): Promise<void> => {
-  const copy = otpEmailCopy(purpose);
+export const sendOtpEmail = async (email: string, otp: string, purpose: OtpPurpose = 'login'): Promise<void> => {
   // In test: log to console only, skip actual sending
   if (process.env.NODE_ENV === 'test') {
     console.log(`\n📧 [TEST] OTP Email`);
@@ -65,19 +113,7 @@ export const sendOtpEmail = async (email: string, otp: string, purpose: 'signup'
     await getTransporter().sendMail({
       from: `"Abjad Platform" <${config.email.from}>`,
       to: email,
-      subject: copy.subject,
-      text: `${copy.intro} Your code is: ${otp}. It expires in ${config.otp.expiryMinutes} minutes. ${copy.footer}`.trim(),
-      html: `
-        <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px;">
-          <h2 style="color:#1a1a1a;">${copy.heading}</h2>
-          <p style="color:#555;">${copy.intro}</p>
-          <div style="background:#f4f4f4;border-radius:8px;padding:24px;text-align:center;margin:24px 0;">
-            <span style="font-size:36px;font-weight:bold;letter-spacing:8px;color:#1a1a1a;">${otp}</span>
-          </div>
-          <p style="color:#888;font-size:13px;">This code expires in <strong>${config.otp.expiryMinutes} minutes</strong>. Do not share it with anyone.</p>
-          ${copy.footer ? `<p style="color:#888;font-size:13px;">${copy.footer}</p>` : ''}
-        </div>
-      `,
+      ...buildOtpEmail(otp, purpose),
     });
   } catch (error) {
     // In dev: swallow SMTP failures so demo / fake addresses
