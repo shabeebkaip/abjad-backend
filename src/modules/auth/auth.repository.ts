@@ -176,10 +176,11 @@ class AuthRepository {
   }
 
   /**
-   * Find OTP by email and purpose with code field included
+   * Find a LIVE OTP by email and purpose with code field included.
+   * Expiry is enforced here, not left to the Mongo TTL monitor (runs ~60s).
    */
   async findOtp(email: string, purpose: string) {
-    return OtpCode.findOne({ email: email.toLowerCase(), purpose }).select('+code');
+    return OtpCode.findOne({ email: email.toLowerCase(), purpose, expiresAt: { $gt: new Date() } }).select('+code');
   }
 
   /**

@@ -407,6 +407,15 @@ describe('POST /api/auth/login', () => {
     expect(login.status).toBe(429);
   });
 
+  it('B4: an expired OTP (past expiresAt, TTL monitor not yet run) is rejected as not found', async () => {
+    await createUserWithPassword(TEST_EMAIL, TEST_PASSWORD);
+    await plantOtp(TEST_EMAIL, 'login', '112233');
+    await OtpCode.updateOne({ email: TEST_EMAIL, purpose: 'login' }, { expiresAt: new Date(Date.now() - 5_000) });
+    const res = await request(app).post('/api/auth/verify-otp').send({ email: TEST_EMAIL, code: '112233', purpose: 'login' });
+    expect(res.status).toBe(404);
+    expect(res.body.message).toContain('No OTP found');
+  });
+
   it('returns 400 for missing password', async () => {
     const res = await request(app).post('/api/auth/login').send({ email: TEST_EMAIL });
     expect(res.status).toBe(400);
