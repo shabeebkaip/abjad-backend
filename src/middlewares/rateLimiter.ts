@@ -7,6 +7,8 @@
 
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import type { Request } from 'express';
+import crypto from 'crypto';
+import { config } from '../config';
 
 // Key OTP limiters by EMAIL, not IP. Schools/offices sit behind a single
 // shared IP (NAT), so IP-keying lets one busy network exhaust the budget and
@@ -73,19 +75,32 @@ export const verifyOtpLimiter = rateLimit({
   skip: (_req) => isAuthThrottleDisabled() || process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test',
 });
 
+// Same token source the refresh controller reads (cookie, else body).
+const refreshTokenOf = (req: Request): string | undefined =>
+  req.cookies?.[config.cookie.refreshTokenName] || req.body?.refreshToken;
+
 /**
- * Refresh limiter: 10 requests per 5 minutes
+ * Refresh limiter: 10 requests per 5 minutes PER SESSION
  * Applied to: POST /auth/refresh
  * Reason: Allow burst renewals (tab switching, app background/foreground)
- *         but prevent token farming attacks
+ *         but prevent token farming attacks.
+ * Keyed by a hash of the refresh token (never the raw token) so users behind
+ * one NAT don't share a budget (B1). Calls without any token are skipped: they
+ * can only ever get a cheap 400, and counting them let anonymous page loads
+ * (/login, /register, marketing) burn the budget of real users on the same IP.
+ * The global 600/15min IP limiter in app.ts still bounds them.
  */
 export const refreshLimiter = rateLimit({
   windowMs: 5 * 60 * 1000, // 5 minutes
   max: 10,
+  keyGenerator: (req) => {
+    const token = refreshTokenOf(req);
+    return token ? `rt:${crypto.createHash('sha256').update(token).digest('hex')}` : req.ip ? ipKeyGenerator(req.ip) : 'unknown';
+  },
   message: { success: false, message: 'Too many refresh requests' },
   standardHeaders: true,
   legacyHeaders: false,
-  skip: (_req) => isAuthThrottleDisabled() || process.env.NODE_ENV === 'test',
+  skip: (req) => isAuthThrottleDisabled() || process.env.NODE_ENV === 'test' || !refreshTokenOf(req),
 });
 
 /**
