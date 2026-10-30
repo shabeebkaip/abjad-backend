@@ -259,6 +259,7 @@ class AuthService {
         // For school accounts: prefer schoolName; contactName is the admin's name
         schoolName: dto.schoolName,
         passwordHash,
+        termsVersion: dto.termsVersion,
       });
     } else if (purpose === 'signup') {
       // SIGNUP-004 defense in depth — sendOtp already rejects signup for an
