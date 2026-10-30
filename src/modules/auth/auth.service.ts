@@ -127,13 +127,12 @@ class AuthService {
     await authRepository.updateLastLogin(userId);
 
     const payload: JwtPayload = { userId, role: user.role, email: user.email };
-    const accessToken = signAccessToken(payload);
     const refreshTokenTtl = rememberDevice ? '30d' : '1d';
     const refreshToken = signRefreshToken(payload, refreshTokenTtl);
 
     const sessionTtlMs = rememberDevice ? 30 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
     const expiresAt = new Date(Date.now() + sessionTtlMs);
-    await authRepository.createSession({
+    const session = await authRepository.createSession({
       userId,
       refreshTokenHash: hashToken(refreshToken),
       deviceInfo: opts.deviceInfo || {},
@@ -141,6 +140,8 @@ class AuthService {
       expiresAt,
       rememberDevice,
     });
+    // Access token carries the session id so revoking the session kills it (B5).
+    const accessToken = signAccessToken(payload, session._id!.toString());
 
     return { accessToken, refreshToken, rememberDevice };
   }
@@ -475,7 +476,7 @@ class AuthService {
       userId: payload.userId,
       role: payload.role,
       email: payload.email,
-    });
+    }, session._id!.toString());
 
     return {
       accessToken: newAccessToken,
@@ -485,13 +486,19 @@ class AuthService {
   }
 
   /**
-   * Logout — revoke single session by refresh token
+   * Logout — revoke single session by refresh token and/or access-token session id
    */
-  async logout(refreshToken: string): Promise<void> {
-    const hash = hashToken(refreshToken);
-    const session = await authRepository.findSession(hash);
-    if (session) {
-      await authRepository.revokeSession(session._id!.toString());
+  async logout(refreshToken?: string, sessionId?: string): Promise<void> {
+    if (refreshToken) {
+      const session = await authRepository.findSession(hashToken(refreshToken));
+      if (session) {
+        await authRepository.revokeSession(session._id!.toString());
+      }
+    }
+    // Also revoke the session named by the access token, so a logout that
+    // arrives without the cookie still kills the caller's own token.
+    if (sessionId) {
+      await authRepository.revokeSession(sessionId);
     }
   }
 

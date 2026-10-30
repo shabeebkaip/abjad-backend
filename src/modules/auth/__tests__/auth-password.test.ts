@@ -558,7 +558,6 @@ describe('POST /api/auth/change-password', () => {
   it('W2: revokes every OTHER session but keeps the caller\'s own current session usable', async () => {
     const user = await createUserWithPassword(TEST_EMAIL, TEST_PASSWORD);
     const payload = { userId: user._id!.toString(), role: user.role, email: user.email };
-    const accessToken = signAccessToken(payload);
 
     // Two "devices" — minted directly (not via two real /login calls) so the
     // tokens are guaranteed distinct even if this test runs within the same
@@ -567,7 +566,8 @@ describe('POST /api/auth/change-password', () => {
     const tokenA = signRefreshToken(payload, '30d');
     const tokenB = signRefreshToken(payload, '29d');
     const farFuture = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-    await Session.create({ userId: user._id, refreshTokenHash: hashToken(tokenA), deviceInfo: {}, ipAddress: 'test', isRevoked: false, expiresAt: farFuture, rememberDevice: true });
+    const sessionA = await Session.create({ userId: user._id, refreshTokenHash: hashToken(tokenA), deviceInfo: {}, ipAddress: 'test', isRevoked: false, expiresAt: farFuture, rememberDevice: true });
+    const accessToken = signAccessToken(payload, sessionA._id.toString());
     await Session.create({ userId: user._id, refreshTokenHash: hashToken(tokenB), deviceInfo: {}, ipAddress: 'test', isRevoked: false, expiresAt: farFuture, rememberDevice: true });
 
     // Device A changes the password, presenting its own refresh cookie.

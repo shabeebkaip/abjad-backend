@@ -1,11 +1,13 @@
 import { Request, Response, NextFunction } from 'express';
 import { verifyAccessToken } from '../utils/jwt.util';
+import authRepository from '../modules/auth/auth.repository';
 
 export interface AuthRequest extends Request {
   user?: {
     userId: string;
     email: string;
     role: string;
+    sid?: string;
   };
 }
 
@@ -22,7 +24,19 @@ export const authenticate = async (req: AuthRequest, res: Response, next: NextFu
     }
 
     // Verify token (throws on invalid/expired)
-    req.user = verifyAccessToken(token);
+    const user = verifyAccessToken(token);
+
+    // B5 — the token is only as good as its session. One indexed _id lookup
+    // per request. Tokens minted before this check (no sid) are rejected with
+    // the same 401 so the client's silent refresh mints a sid-bearing one.
+    if (!user.sid || !(await authRepository.isSessionActive(user.sid, user.userId))) {
+      return res.status(401).json({
+        success: false,
+        message: 'Session expired or revoked. Please login again.',
+      });
+    }
+
+    req.user = user;
     return next();
   } catch (error) {
     return res.status(401).json({

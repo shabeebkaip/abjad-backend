@@ -15,6 +15,10 @@ export interface JwtPayload {
   userId: string;
   role: string;
   email: string;
+  // Session id (Session._id). Access tokens carry it so authenticate can
+  // reject tokens whose session was revoked (logout, password change,
+  // suspension). Absent on refresh tokens and on pre-B5 access tokens.
+  sid?: string;
 }
 
 // Internal shape after decoding — split out so callers don't have to know
@@ -42,9 +46,9 @@ function commonVerifyOptions(): jwt.VerifyOptions {
   };
 }
 
-export const signAccessToken = (payload: JwtPayload): string =>
+export const signAccessToken = (payload: JwtPayload, sessionId: string): string =>
   jwt.sign(
-    payload,
+    { ...payload, sid: sessionId },
     config.jwt.accessSecret as string,
     {
       ...commonSignOptions(config.jwt.accessExpiresIn as string),
@@ -64,7 +68,7 @@ export const signRefreshToken = (payload: JwtPayload, expiresIn?: string): strin
 
 export const verifyAccessToken = (token: string): JwtPayload => {
   const decoded = jwt.verify(token, config.jwt.accessSecret, commonVerifyOptions()) as DecodedToken;
-  return { userId: decoded.userId ?? decoded.sub!, role: decoded.role, email: decoded.email };
+  return { userId: decoded.userId ?? decoded.sub!, role: decoded.role, email: decoded.email, sid: decoded.sid };
 };
 
 export const verifyRefreshToken = (token: string): JwtPayload => {

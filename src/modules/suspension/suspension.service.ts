@@ -11,6 +11,7 @@
 import mongoose from 'mongoose';
 import { adminRepository } from '../admin/admin.repository';
 import { AppError } from '../../utils/app-error.util';
+import authRepository from '../auth/auth.repository';
 import {
   SuspensionEvent,
   SuspensionTargetType,
@@ -75,6 +76,10 @@ export class SuspensionService {
     } else {
       await adminRepository.setSchoolStatus(input.targetId, 'suspended');
     }
+
+    // B5 — kill every live session so already-issued access tokens stop
+    // working immediately (authenticate checks the session on each request).
+    await authRepository.revokeAllSessions(String(profile.userId));
 
     return SuspensionEvent.create({
       targetType: input.targetType,

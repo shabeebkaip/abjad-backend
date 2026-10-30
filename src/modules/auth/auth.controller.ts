@@ -8,6 +8,7 @@ import authRepository from './auth.repository';
 import { SendOtpDTO, VerifyOtpDTO, LoginDTO } from './auth.types';
 import { config } from '../../config';
 import { AppError } from '../../utils/app-error.util';
+import type { AuthRequest } from '../../middlewares/auth';
 
 class AuthController {
   /**
@@ -218,9 +219,7 @@ class AuthController {
   async logout(req: Request, res: Response, next: NextFunction) {
     try {
       const refreshToken = req.cookies[config.cookie.refreshTokenName] || req.body?.refreshToken;
-      if (refreshToken) {
-        await authService.logout(refreshToken);
-      }
+      await authService.logout(refreshToken, (req as AuthRequest).user?.sid);
 
       res.clearCookie(config.cookie.refreshTokenName, {
         httpOnly: true,

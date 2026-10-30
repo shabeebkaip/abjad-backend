@@ -2,6 +2,7 @@
 // All DB queries for auth module — User, OtpCode, Session models only
 // Exported as singleton instance
 
+import mongoose from 'mongoose';
 // @ts-ignore
 import User from '../../models/user.model';
 // @ts-ignore
@@ -241,6 +242,21 @@ class AuthRepository {
       isRevoked: false,
       expiresAt: { $gt: new Date() },
     });
+  }
+
+  /**
+   * True if the session exists, belongs to the user, is not revoked and has
+   * not expired. Backs the per-request check in the authenticate middleware
+   * (primary-key lookup, no document hydration).
+   */
+  async isSessionActive(sessionId: string, userId: string): Promise<boolean> {
+    if (!mongoose.isValidObjectId(sessionId)) return false;
+    return !!(await Session.exists({
+      _id: sessionId,
+      userId,
+      isRevoked: false,
+      expiresAt: { $gt: new Date() },
+    }));
   }
 
   /**
