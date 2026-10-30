@@ -57,6 +57,8 @@ class AuthRepository {
     language?: string;
     // Already-hashed password (DECISIONS LOCKED #1 — required at signup).
     passwordHash?: string;
+    // Consent record (D6): version of the Terms/Privacy text the user accepted.
+    termsVersion?: string;
   }) {
     const user = new User({
       email: data.email.toLowerCase(),
@@ -66,6 +68,8 @@ class AuthRepository {
       schoolName: data.schoolName,
       language: data.language || 'ar',
       password: data.passwordHash,
+      termsAcceptedVersion: data.termsVersion,
+      termsAcceptedAt: data.termsVersion ? new Date() : undefined,
       status: 'active',
       isPhoneVerified: false,
       isEmailVerified: true,

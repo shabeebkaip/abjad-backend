@@ -20,6 +20,8 @@ export interface IUser {
   failedLoginAttempts: number;
   otpFailedAttempts: number;
   otpLastFailedAt?: Date;
+  termsAcceptedVersion?: string;
+  termsAcceptedAt?: Date;
   lockedUntil?: Date;
   lastLoginAt?: Date;
   loginCount: number;
@@ -73,6 +75,8 @@ export interface IUserDocument extends Document {
   failedLoginAttempts: number;
   otpFailedAttempts: number;
   otpLastFailedAt?: Date;
+  termsAcceptedVersion?: string;
+  termsAcceptedAt?: Date;
   lockedUntil?: Date;
   lastLoginAt?: Date;
   loginCount: number;
@@ -154,6 +158,9 @@ const userSchema = new Schema<UserDocument>(
     failedLoginAttempts: { type: Number, default: 0 },
     otpFailedAttempts: { type: Number, default: 0 },
     otpLastFailedAt: { type: Date },
+    // Consent record (D6) — set at signup from the body's termsVersion; null for legacy users.
+    termsAcceptedVersion: { type: String },
+    termsAcceptedAt: { type: Date },
     lockedUntil: { type: Date },
     lastLoginAt: { type: Date },
     loginCount: { type: Number, default: 0 },

@@ -199,3 +199,43 @@ describe('B7 admin access-token TTL', () => {
     expect(userTok.exp - userTok.iat).toBe(15 * 60);
   });
 });
+
+describe('D5 change-password rejects an unchanged password', () => {
+  it('400 when new == current; reset-password has no such rule', async () => {
+    await seed();
+    const a = await login();
+    const res = await request(app).post('/api/auth/change-password').set('Authorization', `Bearer ${a.accessToken}`).send({ currentPassword: PASSWORD, newPassword: PASSWORD });
+    expect(res.status).toBe(400);
+    expect(res.body.message).toContain('different');
+
+    await plantOtp(EMAIL, 'reset', '445566');
+    const reset = await request(app).post('/api/auth/reset-password').send({ email: EMAIL, code: '445566', newPassword: PASSWORD });
+    expect(reset.status).toBe(200);
+  });
+});
+
+describe('D6 consent recording', () => {
+  const signup = (extra: object) => {
+    return plantOtp('new@test.com', 'signup', '123456').then(() =>
+      request(app).post('/api/auth/verify-otp').send({ email: 'new@test.com', code: '123456', purpose: 'signup', role: 'teacher', password: PASSWORD, ...extra }));
+  };
+
+  it('stores termsAcceptedVersion and a server-side termsAcceptedAt', async () => {
+    const before = Date.now();
+    expect((await signup({ termsVersion: '2026-10-30' })).status).toBe(200);
+    const u = await User.findOne({ email: 'new@test.com' });
+    expect(u!.termsAcceptedVersion).toBe('2026-10-30');
+    expect(u!.termsAcceptedAt!.getTime()).toBeGreaterThanOrEqual(before - 1000);
+  });
+
+  it('is optional: omitted leaves both null', async () => {
+    expect((await signup({})).status).toBe(200);
+    const u = await User.findOne({ email: 'new@test.com' });
+    expect(u!.termsAcceptedVersion).toBeUndefined();
+    expect(u!.termsAcceptedAt).toBeUndefined();
+  });
+
+  it('rejects a malformed termsVersion with 400', async () => {
+    expect((await signup({ termsVersion: '<script>' })).status).toBe(400);
+  });
+});

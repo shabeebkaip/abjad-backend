@@ -377,6 +377,11 @@ class AuthService {
 
     const match = await comparePassword(currentPassword, user.password);
     if (!match) throw AppError.unauthorized('Current password is incorrect');
+    // Current password is verified, so a plain compare is enough. (Reset does
+    // NOT get this rule: the user there may have forgotten what it was.)
+    if (newPassword === currentPassword) {
+      throw AppError.badRequest('New password must be different from your current password.');
+    }
 
     user.password = await hashPassword(newPassword);
     await user.save();

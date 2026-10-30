@@ -51,6 +51,9 @@ export const verifyOtpSchema = z
     // accounts only exist as pre-existing/legacy users or admin-created
     // ones, never as a product of the signup flow.
     password: z.string().optional(),
+    // Consent (D6): version of the Terms/Privacy the user ticked, e.g. '2026-10-30'.
+    // Optional for now (older frontends omit it); recorded only on signup.
+    termsVersion: z.string().trim().min(1).max(32).regex(/^[A-Za-z0-9._-]+$/, 'Invalid termsVersion').optional(),
   })
   .superRefine((data, ctx) => {
     if (data.purpose !== 'signup') return;

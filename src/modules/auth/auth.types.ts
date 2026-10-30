@@ -28,6 +28,8 @@ export interface VerifyOtpDTO {
   // Required when purpose === 'signup' (DECISIONS LOCKED #1) — hashed before
   // being persisted via createUser. Validated by verifyOtpSchema's superRefine.
   password?: string;
+  // Consent version accepted at signup (D6); stored as termsAcceptedVersion/At.
+  termsVersion?: string;
 }
 
 export interface RefreshTokenDTO {
