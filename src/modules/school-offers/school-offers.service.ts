@@ -139,7 +139,7 @@ export class SchoolOffersService {
     // If there's already a contract on this offer, drop the old file from
     // Cloudinary to avoid orphaned uploads.
     if (offer.contractKey) {
-      await deleteFromCloudinary(offer.contractKey, 'raw').catch(() => {});
+      await deleteFromCloudinary(offer.contractKey).catch(() => {});
     }
 
     const result = await uploadToCloudinary(buffer, 'contracts');

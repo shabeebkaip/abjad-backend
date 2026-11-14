@@ -164,7 +164,7 @@ export class SchoolProfileService {
 
     const existing = profile.documents?.[docType];
     if (existing?.key) {
-      await deleteFromCloudinary(existing.key, 'raw').catch(() => {});
+      await deleteFromCloudinary(existing.key).catch(() => {});
     }
 
     const result = await uploadToCloudinary(buffer, 'school-documents');

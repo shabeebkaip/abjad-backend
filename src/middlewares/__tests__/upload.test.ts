@@ -7,7 +7,9 @@ import express from 'express';
 import request from 'supertest';
 import { uploadCvDocument, uploadDocument } from '../upload';
 import { errorHandler } from '../errorHandler';
-import { documentUploadOptions } from '../../utils/cloudinary.util';
+import { v2 as cloudinary } from 'cloudinary';
+import mainApp from '../../app';
+import { documentUploadOptions, deleteFromCloudinary } from '../../utils/cloudinary.util';
 
 const app = express();
 app.post('/cv', uploadCvDocument, (req, res) => { res.json({ name: req.file?.originalname }); });
@@ -66,5 +68,38 @@ describe('documentUploadOptions', () => {
   });
   it('leaves PDFs on the default path', () => {
     expect(documentUploadOptions('cv.pdf')).toEqual({});
+  });
+});
+
+describe('deleteFromCloudinary', () => {
+  afterEach(() => jest.restoreAllMocks());
+  const mockDestroy = (byType: Record<string, string>) =>
+    jest.spyOn(cloudinary.uploader, 'destroy').mockImplementation(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (async (_id: string, opts: any) => ({ result: byType[opts.resource_type] ?? 'not found' })) as any,
+    );
+
+  it('finds a PDF stored as an image asset (was silently skipped as raw)', async () => {
+    const spy = mockDestroy({ image: 'ok' });
+    expect((await deleteFromCloudinary('abjad/resumes/abc')).result).toBe('ok');
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+  it('falls back to raw when image misses', async () => {
+    const spy = mockDestroy({ raw: 'ok' });
+    expect((await deleteFromCloudinary('abjad/resumes/legacy')).result).toBe('ok');
+    expect(spy).toHaveBeenCalledTimes(2);
+  });
+  it('goes straight to raw for Word files', async () => {
+    const spy = mockDestroy({ raw: 'ok' });
+    await deleteFromCloudinary('abjad/resumes/x.docx');
+    expect(spy).toHaveBeenCalledWith('abjad/resumes/x.docx', { resource_type: 'raw' });
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('generic /api/upload is gone', () => {
+  it('DELETE /api/upload no longer exists', async () => {
+    const res = await request(mainApp).delete('/api/upload').send({ publicId: 'abjad/resumes/victim' });
+    expect(res.status).toBe(404);
   });
 });

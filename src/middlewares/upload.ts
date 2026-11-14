@@ -64,6 +64,3 @@ export const uploadDocument: RequestHandler = buildUploader(PDF);
 
 // Teacher CV / education certificate — PDF or Word (client feedback R1 §3.2)
 export const uploadCvDocument: RequestHandler = buildUploader(merge(PDF, WORD), CV_MAX_BYTES);
-
-// Any allowed type
-export const uploadAny: RequestHandler = buildUploader(merge(IMAGE, PDF));

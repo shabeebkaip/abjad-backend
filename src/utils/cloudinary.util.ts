@@ -61,6 +61,16 @@ export function documentUploadOptions(originalName = ''): { resourceType?: 'raw'
   return ext === '.doc' || ext === '.docx' ? { resourceType: 'raw', filename: `${randomUUID()}${ext}` } : {};
 }
 
-export function deleteFromCloudinary(publicId: string, resourceType: 'image' | 'raw' = 'image') {
-  return cloudinary.uploader.destroy(publicId, { resource_type: resourceType });
+// Uploads use resource_type 'auto', so a PDF lands as an 'image' asset while
+// Word files are 'raw'. When the caller doesn't know the type, try each until
+// one matches. Previously documents were always deleted as 'raw', which
+// silently missed every PDF and left orphans on each re-upload.
+export async function deleteFromCloudinary(publicId: string, resourceType?: 'image' | 'raw') {
+  const types = resourceType ? [resourceType] : /\.docx?$/i.test(publicId) ? ['raw'] : ['image', 'raw'];
+  let result: { result?: string } = {};
+  for (const type of types) {
+    result = await cloudinary.uploader.destroy(publicId, { resource_type: type });
+    if (result?.result === 'ok') break;
+  }
+  return result;
 }

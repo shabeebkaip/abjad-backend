@@ -264,7 +264,7 @@ export class TeacherProfileService {
     if (!profile) profile = await teacherProfileRepository.create(userId);
 
     if (profile.resume?.fileKey) {
-      await deleteFromCloudinary(profile.resume.fileKey, 'raw').catch(() => {});
+      await deleteFromCloudinary(profile.resume.fileKey).catch(() => {});
     }
 
     const result = await uploadToCloudinary(buffer, 'resumes', documentUploadOptions(originalName));
@@ -298,7 +298,7 @@ export class TeacherProfileService {
     if (!cert) throw AppError.notFound('Certification not found');
 
     if (cert.fileKey) {
-      await deleteFromCloudinary(cert.fileKey, 'raw').catch(() => {});
+      await deleteFromCloudinary(cert.fileKey).catch(() => {});
     }
 
     const result = await uploadToCloudinary(buffer, 'certificates');
@@ -322,7 +322,7 @@ export class TeacherProfileService {
     if (!profile) throw AppError.notFound('Profile not found');
 
     if (profile.education?.certificateKey) {
-      await deleteFromCloudinary(profile.education.certificateKey, 'raw').catch(() => {});
+      await deleteFromCloudinary(profile.education.certificateKey).catch(() => {});
     }
 
     const result = await uploadToCloudinary(buffer, 'certificates', documentUploadOptions(originalName));

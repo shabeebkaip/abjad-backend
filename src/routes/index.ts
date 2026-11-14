@@ -1,6 +1,5 @@
 import { Router, Response } from 'express';
 import authRoutes from '../modules/auth/auth.routes';
-import uploadRoutes from '../modules/upload/upload.routes';
 import teacherProfileRoutes from '../modules/teacher-profile/teacher-profile.routes';
 import jobsRoutes from '../modules/jobs/jobs.routes';
 import applicationsRoutes from '../modules/applications/applications.routes';
@@ -38,9 +37,11 @@ router.get('/', (_req, res: Response) => {
   });
 });
 
-// Auth & file upload
+// Auth
 router.use('/auth', authRoutes);
-router.use('/upload', uploadRoutes);
+// Generic /upload removed (2026-11-14): unused, and DELETE let any user
+// remove any Cloudinary asset by publicId. Uploads go through owner-scoped
+// feature routes (teacher/profile, school/profile, school/offers).
 
 // Teacher features
 router.use('/teacher/profile', teacherProfileRoutes);
