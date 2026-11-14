@@ -1,6 +1,6 @@
 import { ITeacherProfileDocument } from '../../models/teacher-profile.model';
 import { teacherProfileRepository } from './teacher-profile.repository';
-import { uploadToCloudinary, deleteFromCloudinary } from '../../utils/cloudinary.util';
+import { uploadToCloudinary, deleteFromCloudinary, documentUploadOptions } from '../../utils/cloudinary.util';
 import { AppError } from '../../utils/app-error.util';
 import { diffSection, writeChangeLog } from './profile-change-log.util';
 import { ProfileSection } from '../../models/profile-change-log.model';
@@ -267,7 +267,7 @@ export class TeacherProfileService {
       await deleteFromCloudinary(profile.resume.fileKey, 'raw').catch(() => {});
     }
 
-    const result = await uploadToCloudinary(buffer, 'resumes');
+    const result = await uploadToCloudinary(buffer, 'resumes', documentUploadOptions(originalName));
     const updated = await teacherProfileRepository.updateRoot(userId, {
       resume: {
         fileUrl: result.secureUrl,
@@ -317,7 +317,7 @@ export class TeacherProfileService {
     return updated;
   }
 
-  async uploadEducationCertificate(userId: string, buffer: Buffer): Promise<ITeacherProfileDocument> {
+  async uploadEducationCertificate(userId: string, buffer: Buffer, originalName?: string): Promise<ITeacherProfileDocument> {
     const profile = await teacherProfileRepository.findByUserId(userId);
     if (!profile) throw AppError.notFound('Profile not found');
 
@@ -325,7 +325,7 @@ export class TeacherProfileService {
       await deleteFromCloudinary(profile.education.certificateKey, 'raw').catch(() => {});
     }
 
-    const result = await uploadToCloudinary(buffer, 'certificates');
+    const result = await uploadToCloudinary(buffer, 'certificates', documentUploadOptions(originalName));
     const updated = await teacherProfileRepository.updateSection(userId, 'education', {
       certificateUrl: result.secureUrl,
       certificateKey: result.publicId,

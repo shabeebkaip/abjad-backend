@@ -15,6 +15,14 @@ export const errorHandler = (err: any, _req: any, res: Response, _next: any) => 
     });
   }
 
+  // Multer upload errors (file too large, unexpected field) are client errors
+  if (err.name === 'MulterError') {
+    const message = err.code === 'LIMIT_FILE_SIZE'
+      ? 'File is too large. Please upload a smaller file.'
+      : 'File upload failed. Please try again with a single file.';
+    return res.status(400).json({ success: false, message });
+  }
+
   // Mongoose validation error
   if (err.name === 'ValidationError') {
     return res.status(400).json({

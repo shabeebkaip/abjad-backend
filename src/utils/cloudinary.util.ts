@@ -1,3 +1,5 @@
+import path from 'path';
+import { randomUUID } from 'crypto';
 import { v2 as cloudinary } from 'cloudinary';
 import { config } from '../config';
 
@@ -49,6 +51,14 @@ export function uploadToCloudinary(
 
     uploadStream.end(buffer);
   });
+}
+
+// Word files are stored as Cloudinary "raw" assets. Raw assets keep no format
+// metadata, so the extension must live in the public_id or the delivered URL
+// downloads as an extension-less file nobody can open.
+export function documentUploadOptions(originalName = ''): { resourceType?: 'raw'; filename?: string } {
+  const ext = path.extname(originalName).toLowerCase();
+  return ext === '.doc' || ext === '.docx' ? { resourceType: 'raw', filename: `${randomUUID()}${ext}` } : {};
 }
 
 export function deleteFromCloudinary(publicId: string, resourceType: 'image' | 'raw' = 'image') {

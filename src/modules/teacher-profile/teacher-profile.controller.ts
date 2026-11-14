@@ -137,7 +137,7 @@ export class TeacherProfileController {
         res.status(400).json({ success: false, message: 'No file uploaded' });
         return;
       }
-      const profile = await teacherProfileService.uploadEducationCertificate(req.user!.userId, req.file.buffer);
+      const profile = await teacherProfileService.uploadEducationCertificate(req.user!.userId, req.file.buffer, req.file.originalname);
       res.json({ success: true, data: profile });
     } catch (err) {
       next(err);

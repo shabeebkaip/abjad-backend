@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { teacherProfileController } from './teacher-profile.controller';
 import { authenticate, authorize } from '../../middlewares/auth';
-import { uploadImage, uploadDocument } from '../../middlewares/upload';
+import { uploadImage, uploadDocument, uploadCvDocument } from '../../middlewares/upload';
 
 const router = Router();
 
@@ -26,8 +26,8 @@ router.post('/certifications/:certId/upload', uploadDocument, teacherProfileCont
 
 // File uploads
 router.post('/photo', uploadImage, teacherProfileController.uploadPhoto.bind(teacherProfileController));
-router.post('/resume', uploadDocument, teacherProfileController.uploadResume.bind(teacherProfileController));
-router.post('/education/certificate', uploadDocument, teacherProfileController.uploadEducationCertificate.bind(teacherProfileController));
+router.post('/resume', uploadCvDocument, teacherProfileController.uploadResume.bind(teacherProfileController));
+router.post('/education/certificate', uploadCvDocument, teacherProfileController.uploadEducationCertificate.bind(teacherProfileController));
 
 // Submit for approval
 router.post('/submit', teacherProfileController.submitForApproval.bind(teacherProfileController));
