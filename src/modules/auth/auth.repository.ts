@@ -65,6 +65,9 @@ class AuthRepository {
       role: data.role || 'teacher',
       firstName: data.firstName,
       lastName: data.lastName,
+      // School-side views (applications, interviews, offers, dashboard) read User.name;
+      // without it every new applicant showed as "Candidate".
+      name: [data.firstName, data.lastName].filter(Boolean).join(' ').trim() || data.schoolName?.trim() || undefined,
       schoolName: data.schoolName,
       language: data.language || 'ar',
       password: data.passwordHash,
