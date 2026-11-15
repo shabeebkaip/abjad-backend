@@ -37,7 +37,7 @@ async function attachSchoolInfo(jobs: IJob[]): Promise<IJob[]> {
   const userIds = [...new Set(jobs.map((j) => String(j.schoolId)))];
   const profiles = await SchoolProfile.find(
     { userId: { $in: userIds } },
-    { userId: 1, nameEn: 1, nameAr: 1, logoUrl: 1 }
+    { userId: 1, nameEn: 1, nameAr: 1, logoUrl: 1, profileStatus: 1 }
   ).lean();
   const byUserId = new Map(profiles.map((p) => [String(p.userId), p]));
   return jobs.map((j) => {
@@ -45,8 +45,9 @@ async function attachSchoolInfo(jobs: IJob[]): Promise<IJob[]> {
     return {
       ...j,
       school: profile
-        ? { name: profile.nameEn || profile.nameAr || '', logoUrl: profile.logoUrl }
-        : { name: '', logoUrl: undefined },
+        // Unverified schools may post; verified ones get a "Verified by Abjad" badge.
+        ? { name: profile.nameEn || profile.nameAr || '', logoUrl: profile.logoUrl, verified: profile.profileStatus === 'verified' }
+        : { name: '', logoUrl: undefined, verified: false },
     } as IJob;
   });
 }
@@ -214,7 +215,7 @@ export class JobsRepository {
       SavedJob.countDocuments({ teacherId: new mongoose.Types.ObjectId(teacherId) }),
     ]);
 
-    const jobs = savedDocs.map((s) => s.jobId).filter(Boolean) as IJob[];
+    const jobs = await attachSchoolInfo(savedDocs.map((s) => s.jobId).filter(Boolean) as IJob[]);
     return { jobs, total };
   }
 

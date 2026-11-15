@@ -84,7 +84,7 @@ export interface IJob extends Document {
   maxApplications?: number;
   autoCloseOnMax: boolean;
   // Populated by repository (not stored in DB)
-  school?: { name: string; logoUrl?: string };
+  school?: { name: string; logoUrl?: string; verified?: boolean };
   createdAt: Date;
   updatedAt: Date;
 }
