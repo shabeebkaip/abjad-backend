@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { Application, IApplication } from '../../models/application.model';
+import { SCHOOL_HIDDEN_TEACHER_FIELDS } from '../school-candidates/school-candidates.repository';
 
 export interface SchoolAppFilters {
   jobId?: string;
@@ -42,7 +43,7 @@ export class SchoolApplicationsRepository {
     })
       .populate('teacherId', 'name email')
       .populate('jobId', 'title city subjects gradeLevels')
-      .populate('teacherProfileId');
+      .populate('teacherProfileId', SCHOOL_HIDDEN_TEACHER_FIELDS);
   }
 
   async updateStatus(

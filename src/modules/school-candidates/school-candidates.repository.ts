@@ -74,11 +74,15 @@ export function buildCandidateQuery(filters: CandidateSearchFilters): Record<str
   return query;
 }
 
+// Schools must never receive a teacher's National ID / Iqama (PDPL; promised in the
+// teacher Support FAQ). Every school-facing read of TeacherProfile uses this projection.
+export const SCHOOL_HIDDEN_TEACHER_FIELDS = '-personal.nationalId';
+
 export class SchoolCandidatesRepository {
   async findAllForRanking(filters: CandidateSearchFilters): Promise<ITeacherProfileDocument[]> {
     const query = buildCandidateQuery(filters);
     // Hard cap — beyond this we'd need a precomputed score column on TeacherProfile.
-    const docs = await TeacherProfile.find(query).limit(RANK_FETCH_CAP).lean();
+    const docs = await TeacherProfile.find(query).select(SCHOOL_HIDDEN_TEACHER_FIELDS).limit(RANK_FETCH_CAP).lean();
     return docs as ITeacherProfileDocument[];
   }
 
@@ -145,7 +149,7 @@ export class SchoolCandidatesRepository {
       sortBy === 'completion' ? { completionPercentage: -1 } : { createdAt: -1 };
 
     const [teachers, total] = await Promise.all([
-      TeacherProfile.find(query).sort(sort).skip(skip).limit(limit).lean(),
+      TeacherProfile.find(query).select(SCHOOL_HIDDEN_TEACHER_FIELDS).sort(sort).skip(skip).limit(limit).lean(),
       TeacherProfile.countDocuments(query),
     ]);
 
@@ -156,7 +160,7 @@ export class SchoolCandidatesRepository {
     return TeacherProfile.findOne({
       userId: new mongoose.Types.ObjectId(teacherProfileId),
       profileStatus: 'approved',
-    });
+    }).select(SCHOOL_HIDDEN_TEACHER_FIELDS);
   }
 
   // Notes
