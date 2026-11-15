@@ -66,6 +66,27 @@ export class ApplicationsRepository {
     return new Set(docs.map((d) => (d as { jobId: { toString(): string } }).jobId.toString()));
   }
 
+  /** Re-open a withdrawn application. One application per teacher+job is enforced by a
+   * unique index, so re-applying must reuse the existing document instead of inserting. */
+  async reopen(
+    applicationId: string,
+    data: { teacherProfileId: string; coverLetter?: string; matchScore?: number }
+  ): Promise<IApplication | null> {
+    return Application.findOneAndUpdate(
+      { _id: new mongoose.Types.ObjectId(applicationId), status: 'withdrawn' },
+      {
+        $set: {
+          status: 'submitted',
+          teacherProfileId: new mongoose.Types.ObjectId(data.teacherProfileId),
+          coverLetter: data.coverLetter,
+          matchScore: data.matchScore,
+        },
+        $push: { statusHistory: { status: 'submitted', timestamp: new Date(), note: 'Re-applied after withdrawal' } },
+      },
+      { new: true }
+    );
+  }
+
   async findByTeacherAndJob(teacherId: string, jobId: string): Promise<IApplication | null> {
     return Application.findOne({
       teacherId: new mongoose.Types.ObjectId(teacherId),

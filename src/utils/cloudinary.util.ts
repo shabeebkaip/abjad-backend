@@ -2,6 +2,7 @@ import path from 'path';
 import { randomUUID } from 'crypto';
 import { v2 as cloudinary } from 'cloudinary';
 import { config } from '../config';
+import { AppError } from './app-error.util';
 
 cloudinary.config({
   cloud_name: config.cloudinary.cloudName,
@@ -36,6 +37,11 @@ export function uploadToCloudinary(
       },
       (error, result) => {
         if (error || !result) {
+          // Cloudinary answers 400 for files it can't read (e.g. a damaged PDF):
+          // that's the user's file, so report a 400 with guidance instead of a 500.
+          if (error && (error as { http_code?: number }).http_code === 400) {
+            return reject(AppError.badRequest('This file could not be read. Please upload a valid PDF or Word document.'));
+          }
           return reject(error ?? new Error('Cloudinary upload failed'));
         }
         resolve({

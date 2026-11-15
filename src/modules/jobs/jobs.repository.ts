@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import { Job, IJob } from '../../models/job.model';
 import { SavedJob } from '../../models/saved-job.model';
 import SchoolProfile from '../../models/school-profile.model';
+import User from '../../models/user.model';
 import { ITeacherProfileDocument } from '../../models/teacher-profile.model';
 import { matchingService } from '../matching/matching.service';
 
@@ -35,19 +36,27 @@ export interface JobFilters {
 async function attachSchoolInfo(jobs: IJob[]): Promise<IJob[]> {
   if (!jobs.length) return jobs;
   const userIds = [...new Set(jobs.map((j) => String(j.schoolId)))];
-  const profiles = await SchoolProfile.find(
-    { userId: { $in: userIds } },
-    { userId: 1, nameEn: 1, nameAr: 1, logoUrl: 1, profileStatus: 1 }
-  ).lean();
+  const [profiles, users] = await Promise.all([
+    SchoolProfile.find(
+      { userId: { $in: userIds } },
+      { userId: 1, nameEn: 1, nameAr: 1, logoUrl: 1, profileStatus: 1 }
+    ).lean(),
+    // A school can post before filling its profile; fall back to the name given at sign-up.
+    User.find({ _id: { $in: userIds } }, { schoolName: 1 }).lean(),
+  ]);
   const byUserId = new Map(profiles.map((p) => [String(p.userId), p]));
+  const signupName = new Map(users.map((u) => [String(u._id), (u as { schoolName?: string }).schoolName ?? '']));
   return jobs.map((j) => {
-    const profile = byUserId.get(String(j.schoolId));
+    const id = String(j.schoolId);
+    const profile = byUserId.get(id);
     return {
       ...j,
-      school: profile
+      school: {
+        name: profile?.nameEn || profile?.nameAr || signupName.get(id) || '',
+        logoUrl: profile?.logoUrl,
         // Unverified schools may post; verified ones get a "Verified by Abjad" badge.
-        ? { name: profile.nameEn || profile.nameAr || '', logoUrl: profile.logoUrl, verified: profile.profileStatus === 'verified' }
-        : { name: '', logoUrl: undefined, verified: false },
+        verified: profile?.profileStatus === 'verified',
+      },
     } as IJob;
   });
 }

@@ -33,16 +33,23 @@ export class ApplicationsService {
 
     const { score: matchScore } = matchingService.compute(profile, job);
 
-    const application = await applicationsRepository.create({
+    const teacherProfileId = (profile._id as { toString(): string }).toString();
+    // Re-applying after a withdrawal reopens the same application (unique teacher+job index).
+    // Withdrawal never lowered the job's applicationsCount, so a reopen doesn't raise it.
+    const reopened = existing
+      ? await applicationsRepository.reopen(String(existing._id), { teacherProfileId, coverLetter, matchScore })
+      : null;
+    if (existing && !reopened) throw AppError.conflict('You have already applied for this job');
+    const application = reopened ?? await applicationsRepository.create({
       jobId,
       teacherId,
-      teacherProfileId: (profile._id as { toString(): string }).toString(),
+      teacherProfileId,
       schoolId: job.schoolId.toString(),
       coverLetter,
       matchScore,
     });
 
-    await applicationsRepository.incrementJobApplicationsCount(jobId);
+    if (!reopened) await applicationsRepository.incrementJobApplicationsCount(jobId);
     // SRD 3.2.4 — close the job if it has now reached maxApplications and the school opted in.
     void applicationsRepository.closeJobIfFull(jobId);
 

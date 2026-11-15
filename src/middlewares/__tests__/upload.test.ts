@@ -103,3 +103,15 @@ describe('generic /api/upload is gone', () => {
     expect(res.status).toBe(404);
   });
 });
+
+describe('uploadToCloudinary', () => {
+  afterEach(() => jest.restoreAllMocks());
+  it('turns a Cloudinary 400 (unreadable file) into a 400 AppError, not a 500', async () => {
+    jest.spyOn(cloudinary.uploader, 'upload_stream').mockImplementation(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ((_opts: any, cb: any) => ({ end: () => cb({ message: 'Invalid PDF file', http_code: 400 }) })) as any,
+    );
+    const { uploadToCloudinary } = await import('../../utils/cloudinary.util');
+    await expect(uploadToCloudinary(Buffer.from('x'), 'resumes')).rejects.toMatchObject({ statusCode: 400 });
+  });
+});
