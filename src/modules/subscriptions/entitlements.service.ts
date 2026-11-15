@@ -8,6 +8,7 @@ import {
   TRIAL_VALUES,
   type EntitlementBag,
 } from '../../utils/entitlement-registry';
+import { isBillingEnforced } from '../../utils/billing-flags';
 
 // Step 1 of the entitlement registry rollout (post-launch billing pass).
 //
@@ -56,8 +57,9 @@ class EntitlementsService {
       : null;
     if (!audience) return { source: 'free', audience: null, bag: {} };
 
-    // Grandfathered accounts always get the top-tier defaults.
-    if (user.legacyAccess) {
+    // Grandfathered accounts always get the top-tier defaults. Same for schools
+    // while billing is switched off, so nothing blocks them from posting jobs.
+    if (user.legacyAccess || (audience === 'school' && !isBillingEnforced())) {
       return { source: 'legacy', audience, bag: defaultEntitlementsFor(audience) };
     }
 

@@ -16,6 +16,9 @@ dotenv.config({ path: ".env.test" });
 // Set NODE_ENV to test
 process.env.NODE_ENV = "test";
 
+// Billing tests exercise the enforced path; the off switch has its own test.
+process.env.BILLING_ENFORCED = "true";
+
 // Start mongodb-memory-server and connect Mongoose before all tests
 beforeAll(async () => {
   mongoServer = await MongoMemoryServer.create();

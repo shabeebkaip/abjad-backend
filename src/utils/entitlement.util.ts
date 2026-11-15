@@ -14,6 +14,7 @@
 import User, { UserDocument } from '../models/user.model';
 import { subscriptionsRepository } from '../modules/subscriptions/subscriptions.repository';
 import { TRIAL_CV_CAP } from '../modules/subscriptions/subscriptions.service';
+import { isBillingEnforced } from './billing-flags';
 
 export type EntitlementSource = 'paid' | 'trial' | 'legacy' | 'none';
 
@@ -33,8 +34,8 @@ export async function getSchoolEntitlement(userId: string): Promise<SchoolEntitl
   if (!user) return denied();
   if (user.role !== 'school') return denied();
 
-  // 1. Grandfathered legacy account — bypass everything.
-  if (user.legacyAccess) {
+  // 1. Grandfathered legacy account, or billing switched off: bypass everything.
+  if (user.legacyAccess || !isBillingEnforced()) {
     return {
       hasAccess: true,
       source: 'legacy',
